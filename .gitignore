@@ -1,0 +1,12 @@
+# Python (ccbridge)
+__pycache__/
+*.pyc
+.venv/
+venv/
+config.toml
+*.sqlite3
+.pytest_cache/
+
+# Node (extension)
+node_modules/
+package-lock.json

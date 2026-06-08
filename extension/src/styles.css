@@ -1,0 +1,33 @@
+/* 高 specificity + !important 隔離，避免被原站樣式覆蓋 */
+.cc-trans {
+  display: block !important;
+  margin: 4px 0 14px 0 !important;
+  padding: 6px 10px !important;
+  border-left: 3px solid #4a90d9 !important;
+  background: rgba(74, 144, 217, 0.06) !important;
+  color: #222 !important;
+  font-size: 0.95em !important;
+  line-height: 1.6 !important;
+}
+
+.cc-summary {
+  display: block !important;
+  margin: 12px 0 16px 0 !important;
+  padding: 10px 14px !important;
+  border: 1px solid #4a90d9 !important;
+  border-radius: 6px !important;
+  background: #f5f9fe !important;
+  color: #222 !important;
+  font-size: 0.95em !important;
+  line-height: 1.6 !important;
+}
+
+.cc-summary > summary {
+  cursor: pointer !important;
+  font-weight: bold !important;
+  color: #2a6fb0 !important;
+}
+
+.cc-summary .cc-summary-body {
+  margin-top: 8px !important;
+}
