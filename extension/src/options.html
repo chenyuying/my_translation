@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font-family: sans-serif; padding: 16px; max-width: 420px; }
+      label { display: block; margin: 12px 0 4px; font-weight: bold; }
+      input { width: 100%; padding: 6px; box-sizing: border-box; }
+      button { margin-top: 12px; padding: 8px 16px; cursor: pointer; }
+      #saved { color: green; margin-left: 8px; }
+    </style>
+  </head>
+  <body>
+    <h2>cc-translate 設定</h2>
+    <label for="bridgeUrl">Bridge 位址</label>
+    <input id="bridgeUrl" placeholder="http://127.0.0.1:8765" />
+    <label for="token">Token（與 config.toml 的 token 相同）</label>
+    <input id="token" type="password" />
+    <div><button id="save">儲存</button><span id="saved"></span></div>
+    <script src="options.js"></script>
+  </body>
+</html>
