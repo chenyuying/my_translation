@@ -1,0 +1,15 @@
+[project]
+name = "ccbridge"
+version = "0.1.0"
+description = "本地沈浸式翻譯 bridge：呼叫 claude -p 翻譯網頁並存進 Obsidian"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0",
+    "beautifulsoup4>=4.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
