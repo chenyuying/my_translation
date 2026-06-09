@@ -1,6 +1,7 @@
 # Python (ccbridge)
 __pycache__/
 *.pyc
+*.egg-info/
 .venv/
 venv/
 config.toml
