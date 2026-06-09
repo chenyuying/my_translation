@@ -28,6 +28,18 @@ async function callBridge(path, body) {
   return resp.json();
 }
 
+// 快捷鍵 → 轉發成與 popup 相同的訊息給 active tab 的 content script。
+browser.commands.onCommand.addListener(async (command) => {
+  const action =
+    command === "translate-page" ? "translatePage" :
+    command === "save-page" ? "savePage" : null;
+  if (!action) return;
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (tab && tab.id != null) {
+    browser.tabs.sendMessage(tab.id, { action });
+  }
+});
+
 // Firefox：async 監聽器回傳的 Promise 會被當成回應送回呼叫端。
 browser.runtime.onMessage.addListener(async (msg) => {
   try {

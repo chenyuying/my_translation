@@ -27,5 +27,15 @@
       "css": ["src/styles.css"],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "commands": {
+    "translate-page": {
+      "suggested_key": { "default": "Ctrl+Shift+Y", "mac": "Command+Shift+Y" },
+      "description": "翻譯本頁"
+    },
+    "save-page": {
+      "suggested_key": { "default": "Ctrl+Shift+U", "mac": "Command+Shift+U" },
+      "description": "存進 Obsidian"
+    }
+  }
 }
