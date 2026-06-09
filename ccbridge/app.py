@@ -1,4 +1,5 @@
 import subprocess
+import traceback
 from flask import Flask, request, jsonify
 
 from . import translator, saver
@@ -32,6 +33,7 @@ def create_app(config, cache, runner=subprocess.run) -> Flask:
         try:
             result = translator.translate_page(segments, config, cache, runner=runner)
         except Exception as e:
+            traceback.print_exc()  # 完整 traceback 印到終端機，方便除錯
             return jsonify({"ok": False, "error": str(e)}), 502
         return jsonify(result)
 
