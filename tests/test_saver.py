@@ -7,7 +7,7 @@ def test_slugify_basic():
 
 
 def test_slugify_strips_non_alnum():
-    assert slugify("AI 化：Claude Code!!!", "2026-06-08") == "2026-06-08-ai-code"
+    assert slugify("AI 化：Claude Code!!!", "2026-06-08") == "2026-06-08-ai-claude-code"
 
 
 def test_slugify_collapses_and_trims_dashes():
