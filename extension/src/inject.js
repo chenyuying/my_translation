@@ -1,9 +1,14 @@
 (function (global) {
-  function buildTranslationNode(doc, text) {
-    const div = doc.createElement("div");
-    div.className = "cc-trans";
-    div.textContent = text;
-    return div;
+  function buildTranslationNode(sourceEl, text) {
+    // 沿用原段落的標籤與屬性（class/style），讓譯文視覺上跟原文一致
+    // （顏色、字體自動跟著網頁走，深色頁也不會隱形）。
+    // 僅換成譯文、加 cc-trans 標記、移除會造成重複的 id / 抽取用的 data-cc-id。
+    const node = sourceEl.cloneNode(false);
+    node.removeAttribute("data-cc-id");
+    node.removeAttribute("id");
+    node.classList.add("cc-trans");
+    node.textContent = text;
+    return node;
   }
 
   function buildSummaryCard(doc, summary) {
@@ -22,7 +27,7 @@
 
   function injectTranslations(items) {
     items.forEach(({ el, translation }) => {
-      const node = buildTranslationNode(el.ownerDocument, translation);
+      const node = buildTranslationNode(el, translation);
       el.insertAdjacentElement("afterend", node);
     });
   }

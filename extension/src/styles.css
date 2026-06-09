@@ -1,13 +1,9 @@
-/* 高 specificity + !important 隔離，避免被原站樣式覆蓋 */
+/* 譯文沿用原段落樣式（顏色/字體跟著網頁走，深色頁也不隱形）。
+   這裡只加最輕微的左邊框做區隔，不覆蓋字色與背景。 */
 .cc-trans {
-  display: block !important;
-  margin: 4px 0 14px 0 !important;
-  padding: 6px 10px !important;
-  border-left: 3px solid #4a90d9 !important;
-  background: rgba(74, 144, 217, 0.06) !important;
-  color: #222 !important;
-  font-size: 0.95em !important;
-  line-height: 1.6 !important;
+  border-left: 3px solid rgba(128, 128, 128, 0.5) !important;
+  padding-left: 8px !important;
+  margin-top: 2px !important;
 }
 
 .cc-summary {

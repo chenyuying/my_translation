@@ -12,11 +12,16 @@ describe("inject", () => {
     document.body.innerHTML = "";
   });
 
-  it("buildTranslationNode creates div.cc-trans with text", () => {
-    const node = buildTranslationNode(document, "你好");
-    expect(node.tagName).toBe("DIV");
-    expect(node.classList.contains("cc-trans")).toBe(true);
+  it("buildTranslationNode clones source tag/class with translated text", () => {
+    document.body.innerHTML = '<p id="x" class="post" data-cc-id="seg0">orig</p>';
+    const p = document.getElementById("x");
+    const node = buildTranslationNode(p, "你好");
+    expect(node.tagName).toBe("P"); // 沿用原段落標籤
+    expect(node.classList.contains("post")).toBe(true); // 沿用原 class → 套原站樣式
+    expect(node.classList.contains("cc-trans")).toBe(true); // 加上標記
     expect(node.textContent).toBe("你好");
+    expect(node.hasAttribute("id")).toBe(false); // 移除 id 避免重複
+    expect(node.hasAttribute("data-cc-id")).toBe(false);
   });
 
   it("buildSummaryCard creates collapsible details.cc-summary", () => {
@@ -36,6 +41,7 @@ describe("inject", () => {
       { el: b, translation: "乙" },
     ]);
     expect(a.nextElementSibling.classList.contains("cc-trans")).toBe(true);
+    expect(a.nextElementSibling.tagName).toBe("P"); // 沿用原段落標籤
     expect(a.nextElementSibling.textContent).toBe("甲");
     expect(b.nextElementSibling.textContent).toBe("乙");
   });
