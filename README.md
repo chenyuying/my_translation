@@ -17,6 +17,12 @@
 
 ## 執行
 
+    ./start-bridge.sh
+
+`start-bridge.sh` 會自動建立 / 沿用 `.venv`、檢查 `config.toml`，再前景啟動服務（Ctrl+C 結束）。
+
+也可手動執行：
+
     python -m ccbridge.server
 
 服務監聽 127.0.0.1:8765。
