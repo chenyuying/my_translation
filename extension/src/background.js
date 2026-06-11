@@ -28,6 +28,24 @@ async function callBridge(path, body) {
   return resp.json();
 }
 
+// content script 連不上時現場補注入，免去手動重整分頁（與 popup 同邏輯）。
+async function ensureContentScript(tabId) {
+  try {
+    await browser.tabs.sendMessage(tabId, { action: "ping" });
+    return; // 已載入
+  } catch (e) {
+    // 沒有 listener，補注入。受限頁面會在下方 executeScript 丟錯。
+  }
+  await browser.scripting.executeScript({
+    target: { tabId },
+    files: ["src/extract.js", "src/inject.js", "src/content.js"],
+  });
+  await browser.scripting.insertCSS({
+    target: { tabId },
+    files: ["src/styles.css"],
+  });
+}
+
 // 快捷鍵 → 轉發成與 popup 相同的訊息給 active tab 的 content script。
 browser.commands.onCommand.addListener(async (command) => {
   const action =
@@ -36,7 +54,12 @@ browser.commands.onCommand.addListener(async (command) => {
   if (!action) return;
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (tab && tab.id != null) {
-    browser.tabs.sendMessage(tab.id, { action });
+    try {
+      await ensureContentScript(tab.id);
+      await browser.tabs.sendMessage(tab.id, { action });
+    } catch (e) {
+      // 受限頁面或注入失敗：快捷鍵無 UI 可回報，靜默略過。
+    }
   }
 });
 

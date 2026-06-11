@@ -6,7 +6,7 @@
   "browser_specific_settings": {
     "gecko": { "id": "cc-translate@local", "strict_min_version": "128.0" }
   },
-  "permissions": ["activeTab", "storage"],
+  "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": ["http://127.0.0.1/*"],
   "icons": {
     "48": "icons/icon.svg",

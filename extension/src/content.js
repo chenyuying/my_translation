@@ -47,6 +47,7 @@
 
   // Firefox：回傳 Promise（translatePage/savePage 皆 async）即作為回應送回 popup。
   browser.runtime.onMessage.addListener((msg) => {
+    if (msg.action === "ping") return Promise.resolve({ ok: true });
     if (msg.action === "translatePage") return translatePage();
     if (msg.action === "savePage") return savePage();
   });
