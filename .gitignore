@@ -11,3 +11,8 @@ config.toml
 # Node (extension)
 node_modules/
 package-lock.json
+
+# 簽章相關（./sign.sh）
+.env
+extension/web-ext-artifacts/
+extension/.amo-upload-uuid
