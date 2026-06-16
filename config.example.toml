@@ -9,8 +9,10 @@ token = "CHANGE-ME-to-a-long-random-string"
 
 # 呼叫 claude 的指令（argv 陣列）。host 已裝 claude：
 claude_cmd = ["claude"]
-# 若 host 無 claude、改用 Docker（範例，依你的 image 調整）：
-# claude_cmd = ["docker", "run", "--rm", "-i", "claude-code:latest"]
+# 若 host 無 claude、改用 Docker：建議用「常駐 container + docker exec」，
+# 由 start-bridge.sh 啟動名為 cc-translate-claude 的常駐 container（掛載 ~/.claude）：
+# claude_cmd = ["docker", "exec", "-i", "cc-translate-claude", "claude"]
+# （不建議每次 `docker run --rm`：每次翻譯都要重建 / 銷毀 container，冷啟動很慢。）
 
 # 選填：指定模型（留空字串表示用預設）
 model = ""
