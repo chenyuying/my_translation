@@ -15,6 +15,33 @@ VENV_PY=".venv/bin/python"
 CLAUDE_CONTAINER="${CC_CLAUDE_CONTAINER:-cc-translate-claude}"
 CLAUDE_IMAGE="${CC_CLAUDE_IMAGE:-claude-code:latest}"
 
+# 帶時間戳的進度 log；讓「卡在哪個階段、等了多久」一目了然。
+log() { echo "[$(date +%H:%M:%S)] $*"; }
+
+# 等待 Docker daemon 就緒。冷開機時 Docker Desktop 要數十秒才起來，
+# 期間 docker ps / docker run 會「靜默卡住」——這正是第一次啟動看似沒反應的原因。
+# 這裡改成主動輪詢並印進度，逾時就明確報錯，而非無限乾等。
+wait_for_docker() {
+    if docker info >/dev/null 2>&1; then
+        log "Docker daemon 已就緒。"
+        return
+    fi
+    log "Docker daemon 尚未就緒，等待中…（請確認 Docker Desktop 已開啟）"
+    local waited=0
+    until docker info >/dev/null 2>&1; do
+        sleep 1
+        waited=$((waited + 1))
+        if [ $((waited % 5)) -eq 0 ]; then
+            log "  仍在等待 Docker daemon…（已 ${waited}s）"
+        fi
+        if [ "$waited" -ge 120 ]; then
+            echo "等待 Docker daemon 逾時（120s）；請確認 Docker Desktop 已正常啟動。" >&2
+            exit 1
+        fi
+    done
+    log "Docker daemon 已就緒（等待 ${waited}s）。"
+}
+
 # 確保一個常駐的 claude container 在跑：
 #   - 已在跑     → 直接用
 #   - 存在但停了 → docker start
@@ -26,29 +53,38 @@ ensure_claude_container() {
         echo "找不到 docker 指令；請先安裝並啟動 Docker Desktop。" >&2
         exit 1
     fi
+    wait_for_docker
     if [ -n "$(docker ps -q -f "name=^${CLAUDE_CONTAINER}$")" ]; then
+        log "claude container（${CLAUDE_CONTAINER}）已在執行。"
         return  # 已在跑
     fi
     if [ -n "$(docker ps -aq -f "name=^${CLAUDE_CONTAINER}$")" ]; then
-        echo "啟動既有 claude container（${CLAUDE_CONTAINER}）…"
+        log "啟動既有 claude container（${CLAUDE_CONTAINER}）…"
         docker start "$CLAUDE_CONTAINER" >/dev/null
+        log "claude container 已啟動。"
         return
     fi
-    echo "建立常駐 claude container（${CLAUDE_IMAGE}）…"
+    log "建立常駐 claude container（${CLAUDE_IMAGE}）…（首次建立可能較久）"
     docker run -d --name "$CLAUDE_CONTAINER" \
         --entrypoint tail \
         -v "$HOME/.claude.json:/home/claude/.claude.json" \
         -v "$HOME/.claude:/home/claude/.claude" \
         "$CLAUDE_IMAGE" -f /dev/null >/dev/null
+    log "claude container 已建立。"
     echo "（image 更新後若要套用新版：docker rm -f ${CLAUDE_CONTAINER}，再重跑本腳本）"
 }
 
+log "cc-translate 啟動中…"
+
 # 1. 檢查 venv，沒有就建並安裝依賴。
 if [ ! -x "$VENV_PY" ]; then
-    echo "找不到 .venv，建立中…"
+    log "找不到 .venv，建立並安裝依賴中…（首次執行較久）"
     python3 -m venv .venv
     "$VENV_PY" -m pip install --upgrade pip
     "$VENV_PY" -m pip install -e ".[dev]"
+    log ".venv 已就緒。"
+else
+    log "檢查 .venv：OK。"
 fi
 
 # 2. 檢查 config.toml。
@@ -56,9 +92,12 @@ if [ ! -f "config.toml" ]; then
     echo "找不到 config.toml；請先 \`cp config.example.toml config.toml\` 並填好 token / vault_path / claude_cmd。" >&2
     exit 1
 fi
+log "檢查 config.toml：OK。"
 
 # 3. 確保常駐 claude container 就緒。
+log "檢查 Docker 與 claude container…"
 ensure_claude_container
 
 # 4. 啟動 bridge（前景執行，Ctrl+C 結束）。
+log "啟動 bridge server（Flask）…"
 exec "$VENV_PY" -m ccbridge.server
