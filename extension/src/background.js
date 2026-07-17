@@ -8,6 +8,7 @@ async function getSettings() {
 
 async function callBridge(path, body) {
   const { bridgeUrl, token } = await getSettings();
+  console.log("[cc-translate][bg] callBridge →", bridgeUrl + path, "| token:", token ? "有" : "空");
   const resp = await fetch(bridgeUrl + path, {
     method: "POST",
     headers: {
@@ -16,6 +17,7 @@ async function callBridge(path, body) {
     },
     body: JSON.stringify(body),
   });
+  console.log("[cc-translate][bg] fetch 回應:", resp.status, resp.ok);
   if (!resp.ok) {
     let detail = "";
     try {
@@ -48,6 +50,7 @@ async function ensureContentScript(tabId) {
 
 // 快捷鍵 → 轉發成與 popup 相同的訊息給 active tab 的 content script。
 browser.commands.onCommand.addListener(async (command) => {
+  console.log("[cc-translate][bg] 快捷鍵指令:", command);
   const action =
     command === "translate-page" ? "translatePage" :
     command === "save-page" ? "savePage" : null;
@@ -58,13 +61,15 @@ browser.commands.onCommand.addListener(async (command) => {
       await ensureContentScript(tab.id);
       await browser.tabs.sendMessage(tab.id, { action });
     } catch (e) {
-      // 受限頁面或注入失敗：快捷鍵無 UI 可回報，靜默略過。
+      // 受限頁面或注入失敗：快捷鍵無 UI 可回報。原本靜默，這裡印出來方便除錯。
+      console.error("[cc-translate][bg] 快捷鍵處理失敗（此頁可能受限或 content script 注入失敗）:", e);
     }
   }
 });
 
 // Firefox：async 監聽器回傳的 Promise 會被當成回應送回呼叫端。
 browser.runtime.onMessage.addListener(async (msg) => {
+  console.log("[cc-translate][bg] 收到 content 訊息:", msg && msg.action);
   try {
     if (msg.action === "translate") {
       const data = await callBridge("/translate", {
@@ -84,6 +89,7 @@ browser.runtime.onMessage.addListener(async (msg) => {
       return { ok: true, data };
     }
   } catch (e) {
+    console.error("[cc-translate][bg] callBridge 失敗:", e);
     return { ok: false, error: String((e && e.message) || e) };
   }
 });
