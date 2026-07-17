@@ -128,6 +128,24 @@ def test_translate_batch_returns_id_to_translation_map():
     assert result == {"s1": "你好", "s2": "世界"}
 
 
+def test_translate_batch_skips_malformed_entries():
+    # claude 輸出不穩定：有時某元素缺 translation（漏翻）或缺 id。
+    # 不該整批丟 KeyError（會讓 /translate 回 502），只保留完整的元素，
+    # 其餘由上層 translate_page 保留原文並跳過快取。
+    def fake_runner(cmd, input, capture_output, text, timeout):
+        return FakeCompleted(
+            '{"translations": ['
+            '{"id": "s1", "translation": "你好"}, '
+            '{"id": "s2"}, '            # 缺 translation
+            '{"translation": "孤兒"}'   # 缺 id
+            ']}'
+        )
+
+    segments = [{"id": "s1", "text": "Hello"}, {"id": "s2", "text": "World"}]
+    result = translate_batch(segments, make_config(), runner=fake_runner)
+    assert result == {"s1": "你好"}
+
+
 def test_summarize_returns_summary_string():
     def fake_runner(cmd, input, capture_output, text, timeout):
         return FakeCompleted('{"summary": "這是一篇關於測試的文章。"}')

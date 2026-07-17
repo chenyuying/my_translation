@@ -91,7 +91,14 @@ def run_claude(prompt: str, config, runner=subprocess.run) -> dict:
 def translate_batch(segments: list[dict], config, runner=subprocess.run) -> dict[str, str]:
     prompt = build_prompt(segments, config.target_lang)
     data = run_claude(prompt, config, runner=runner)
-    return {t["id"]: t["translation"] for t in data.get("translations", [])}
+    # claude 輸出不保證每個元素都齊全（有時漏 translation 或漏 id）。
+    # 缺欄位的跳過，別讓整批炸成 KeyError → /translate 502；
+    # 漏掉的段落由 translate_page 保留原文，且不寫入快取，下次會重試。
+    out: dict[str, str] = {}
+    for t in data.get("translations", []):
+        if isinstance(t, dict) and "id" in t and "translation" in t:
+            out[t["id"]] = t["translation"]
+    return out
 
 
 def summarize(full_text: str, config, runner=subprocess.run) -> str:
