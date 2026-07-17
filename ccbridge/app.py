@@ -10,6 +10,18 @@ def create_app(config, cache, runner=subprocess.run) -> Flask:
 
     _ALLOWED_ORIGIN_PREFIXES = ("moz-extension://", "chrome-extension://")
 
+    @app.before_request
+    def _log_request():
+        """每個進來的請求都印一行，方便確認 server 到底有沒有收到資料。"""
+        origin = request.headers.get("Origin")
+        has_token = request.headers.get("X-CC-Token") is not None
+        print(
+            f"[收到請求] {request.method} {request.path} "
+            f"from={request.remote_addr} Origin={origin} "
+            f"帶token={has_token} 長度={request.content_length}",
+            flush=True,
+        )
+
     def check_auth():
         """回傳 (錯誤回應, 狀態碼) 或 None（通過）。"""
         origin = request.headers.get("Origin")
@@ -27,9 +39,11 @@ def create_app(config, cache, runner=subprocess.run) -> Flask:
     def translate():
         err = check_auth()
         if err:
+            print(f"[/translate] 認證未通過 → {err[1]}", flush=True)
             return err
         body = request.get_json(silent=True) or {}
         segments = body.get("segments", [])
+        print(f"[/translate] 認證通過，收到 {len(segments)} 段，開始翻譯…", flush=True)
         try:
             result = translator.translate_page(segments, config, cache, runner=runner)
         except Exception as e:
@@ -41,12 +55,18 @@ def create_app(config, cache, runner=subprocess.run) -> Flask:
     def save():
         err = check_auth()
         if err:
+            print(f"[/save] 認證未通過 → {err[1]}", flush=True)
             return err
         body = request.get_json(silent=True) or {}
         url = body.get("url", "")
         title = body.get("title", "")
         html = body.get("html", "")
         summary = body.get("summary", "")
+        print(
+            f"[/save] 認證通過，收到 title={title!r} url={url!r} "
+            f"html={len(html)} 字元 summary={len(summary)} 字元",
+            flush=True,
+        )
         if url in config.blacklist or any(b and b in url for b in config.blacklist):
             return jsonify({"ok": False, "error": "blacklisted url"}), 403
         try:
