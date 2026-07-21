@@ -48,17 +48,6 @@ document.getElementById("translate").addEventListener("click", async () => {
   }
 });
 
-document.getElementById("save").addEventListener("click", async () => {
-  setStatus("儲存中…");
-  try {
-    const resp = await sendToActiveTab("savePage");
-    if (resp && resp.ok) setStatus("已存：" + resp.data.md_path);
-    else setStatus("錯誤：" + (resp ? resp.error : "無回應"));
-  } catch (e) {
-    setStatus("錯誤：" + e.message);
-  }
-});
-
 document.getElementById("open-options").addEventListener("click", (e) => {
   e.preventDefault();
   browser.runtime.openOptionsPage();

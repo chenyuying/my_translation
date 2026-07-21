@@ -52,8 +52,7 @@ async function ensureContentScript(tabId) {
 browser.commands.onCommand.addListener(async (command) => {
   console.log("[cc-translate][bg] 快捷鍵指令:", command);
   const action =
-    command === "translate-page" ? "translatePage" :
-    command === "save-page" ? "savePage" : null;
+    command === "translate-page" ? "translatePage" : null;
   if (!action) return;
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (tab && tab.id != null) {
@@ -76,15 +75,6 @@ browser.runtime.onMessage.addListener(async (msg) => {
         url: msg.url,
         title: msg.title,
         segments: msg.segments,
-      });
-      return { ok: true, data };
-    }
-    if (msg.action === "save") {
-      const data = await callBridge("/save", {
-        url: msg.url,
-        title: msg.title,
-        html: msg.html,
-        summary: msg.summary,
       });
       return { ok: true, data };
     }

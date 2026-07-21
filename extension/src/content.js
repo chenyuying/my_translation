@@ -35,25 +35,10 @@
     return { ok: true, count: items.length };
   }
 
-  async function savePage() {
-    const resp = await browser.runtime.sendMessage({
-      action: "save",
-      url: location.href,
-      title: document.title,
-      html: document.documentElement.outerHTML,
-      summary: lastSummary,
-    });
-    if (!resp || !resp.ok) {
-      return { ok: false, error: resp ? resp.error : "無回應" };
-    }
-    return resp;
-  }
-
-  // Firefox：回傳 Promise（translatePage/savePage 皆 async）即作為回應送回 popup。
+  // Firefox：回傳 Promise（translatePage async）即作為回應送回 popup。
   browser.runtime.onMessage.addListener((msg) => {
     console.log("[cc-translate][content] 收到指令:", msg && msg.action);
     if (msg.action === "ping") return Promise.resolve({ ok: true });
     if (msg.action === "translatePage") return translatePage();
-    if (msg.action === "savePage") return savePage();
   });
 })();

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "cc-translate",
   "version": "0.1.0",
-  "description": "本地沈浸式翻譯：呼叫本機 claude 翻譯網頁並可存進 Obsidian",
+  "description": "本地沈浸式翻譯：呼叫本機 claude 翻譯網頁",
   "browser_specific_settings": {
     "gecko": { "id": "cc-translate@local", "strict_min_version": "128.0" }
   },
@@ -32,10 +32,6 @@
     "translate-page": {
       "suggested_key": { "default": "Ctrl+Shift+Y", "mac": "Command+Shift+Y" },
       "description": "翻譯本頁"
-    },
-    "save-page": {
-      "suggested_key": { "default": "Ctrl+Shift+U", "mac": "Command+Shift+U" },
-      "description": "存進 Obsidian"
     }
   }
 }
