@@ -146,6 +146,24 @@ def test_translate_batch_skips_malformed_entries():
     assert result == {"s1": "你好"}
 
 
+def test_translate_batch_accepts_text_field_as_translation():
+    # 實測（seg129-133）：claude 常沿用「輸入」的欄位名，把譯文放進 "text"
+    # （build_prompt 送進去的輸入欄位就叫 text），而非 prompt 要求的 "translation"。
+    # 若解析只認 "translation"，譯文明明翻好了、id 也對，卻會整批被過濾成 0 成功。
+    # 解析端須同時接受 "text"。
+    def fake_runner(cmd, input, capture_output, text, timeout):
+        return FakeCompleted(
+            '{"translations": ['
+            '{"id": "seg129", "text": "那個 URL"}, '
+            '{"id": "seg130", "text": "我們打造了"}'
+            ']}'
+        )
+
+    segments = [{"id": "seg129", "text": "That URL"}, {"id": "seg130", "text": "We built"}]
+    result = translate_batch(segments, make_config(), runner=fake_runner)
+    assert result == {"seg129": "那個 URL", "seg130": "我們打造了"}
+
+
 def test_summarize_returns_summary_string():
     def fake_runner(cmd, input, capture_output, text, timeout):
         return FakeCompleted('{"summary": "這是一篇關於測試的文章。"}')
