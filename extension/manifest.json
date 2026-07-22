@@ -1,19 +1,32 @@
 {
   "manifest_version": 3,
   "name": "cc-translate",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "本地沈浸式翻譯：呼叫本機 claude 翻譯網頁",
   "browser_specific_settings": {
-    "gecko": { "id": "cc-translate@local", "strict_min_version": "128.0" }
+    "gecko": {
+      "id": "cc-translate@local",
+      "strict_min_version": "128.0"
+    }
   },
-  "permissions": ["activeTab", "storage", "scripting"],
-  "host_permissions": ["http://127.0.0.1/*"],
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
   "icons": {
     "48": "icons/icon.svg",
     "96": "icons/icon.svg",
     "128": "icons/icon.svg"
   },
-  "background": { "scripts": ["src/background.js"] },
+  "background": {
+    "scripts": [
+      "src/background.js"
+    ]
+  },
   "action": {
     "default_popup": "src/popup.html",
     "default_title": "cc-translate",
@@ -22,15 +35,26 @@
   "options_page": "src/options.html",
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["src/extract.js", "src/inject.js", "src/content.js"],
-      "css": ["src/styles.css"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/extract.js",
+        "src/inject.js",
+        "src/content.js"
+      ],
+      "css": [
+        "src/styles.css"
+      ],
       "run_at": "document_idle"
     }
   ],
   "commands": {
     "translate-page": {
-      "suggested_key": { "default": "Ctrl+Shift+Y", "mac": "Command+Shift+Y" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
       "description": "翻譯本頁"
     }
   }

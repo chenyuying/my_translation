@@ -74,7 +74,7 @@ NEW_VERSION="$(node -e '
     process.stdout.write(mode === "none" ? m.version : v);
 ' "$MANIFEST" "$BUMP" "$SET_VERSION")"
 
-echo "==> 簽章版本：$NEW_VERSION（channel=unlisted）"
+echo "==> 簽章版本：${NEW_VERSION}（channel=unlisted）"
 
 # 4. 簽章。artifacts 落在 extension/web-ext-artifacts/。
 #    --no-input 避免在 CI/非互動環境卡住等待輸入。
