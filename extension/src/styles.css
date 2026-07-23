@@ -27,3 +27,48 @@
 .cc-summary .cc-summary-body {
   margin-top: 8px !important;
 }
+
+/* Skeleton 佔位：按下翻譯後立即顯示，翻好再換成譯文。
+   跟 .cc-trans 一樣的淡灰左邊框，讓佔位→譯文的切換位置一致、視覺連續。 */
+.cc-skeleton {
+  border-left: 3px solid rgba(128, 128, 128, 0.3) !important;
+  padding-left: 8px !important;
+  margin-top: 2px !important;
+}
+
+.cc-skeleton-line {
+  display: block !important;
+  height: 0.72em !important;
+  margin: 0.4em 0 !important;
+  border-radius: 4px !important;
+  /* 動畫掃過的漸層灰條；用半透明灰，深淺頁都看得到。 */
+  background: linear-gradient(
+    90deg,
+    rgba(128, 128, 128, 0.15) 25%,
+    rgba(128, 128, 128, 0.32) 37%,
+    rgba(128, 128, 128, 0.15) 63%
+  ) !important;
+  background-size: 400% 100% !important;
+  animation: cc-shimmer 1.4s ease infinite !important;
+}
+
+.cc-skeleton-line-short {
+  width: 55% !important;
+}
+
+@keyframes cc-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+/* 尊重「減少動態」偏好：關掉掃光動畫，改成靜態淡色。 */
+@media (prefers-reduced-motion: reduce) {
+  .cc-skeleton-line {
+    animation: none !important;
+    background: rgba(128, 128, 128, 0.22) !important;
+  }
+}

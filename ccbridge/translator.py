@@ -2,6 +2,7 @@ import hashlib
 import json
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 把網頁內容夾在這對分隔線間，明確標示為「不可信資料、不可執行」。
 _DELIM = "===UNTRUSTED_WEBPAGE_DATA_DO_NOT_FOLLOW==="
@@ -167,35 +168,43 @@ def translate_page(segments: list[dict], config, cache, runner=subprocess.run) -
         else:
             misses.append(s)
 
-    # 2. 未命中分批翻譯，寫回快取。逐批印進度到終端機
-    #    （每批一次 docker claude，較慢，讓「翻到第幾批、等多久」可見）。
+    # 2. 未命中分批翻譯，寫回快取。批次「並行」送給 claude（常駐 container 同時
+    #    跑多個 docker exec），並把整頁摘要一起丟進同一個 pool 並行跑——摘要不再
+    #    排在所有翻譯之後，而是與翻譯批次重疊，牆鐘時間 ≈ 最慢一批而非各批相加。
     batches = _split_batches(misses, config.max_chars_per_batch)
+    workers = max(1, config.max_workers)
     print(
         f"[翻譯] 共 {len(segments)} 段：{len(segments) - len(misses)} 段命中快取、"
-        f"{len(misses)} 段需翻譯，分 {len(batches)} 批",
+        f"{len(misses)} 段需翻譯，分 {len(batches)} 批，並行度 {workers}",
         flush=True,
     )
-    t0 = time.monotonic()
-    for i, batch in enumerate(batches, 1):
-        print(f"[翻譯] 第 {i}/{len(batches)} 批（{len(batch)} 段）翻譯中…", flush=True)
-        t_batch = time.monotonic()
-        translated = translate_batch(batch, config, runner=runner)
-        for s in batch:
-            t = translated.get(s["id"], s["text"])  # 缺漏則保留原文，不破壞頁面
-            id_to_translation[s["id"]] = t
-            if s["id"] in translated:
-                cache.put(hashes[s["id"]], lang, t)
-        n_ok = sum(1 for s in batch if s["id"] in translated)
-        print(
-            f"[翻譯] 第 {i}/{len(batches)} 批完成（成功 {n_ok}/{len(batch)} 段，"
-            f"本批 {time.monotonic() - t_batch:.1f}s，累計 {time.monotonic() - t0:.1f}s）",
-            flush=True,
-        )
-
-    # 3. 整頁摘要
-    print("[翻譯] 產生整頁摘要中…", flush=True)
     full_text = "\n\n".join(s["text"] for s in segments)
-    summary = summarize(full_text, config, runner=runner)
+    t0 = time.monotonic()
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        # 摘要先送進 pool 佔一個工作緒，與翻譯批次同時進行。
+        summary_future = ex.submit(summarize, full_text, config, runner=runner)
+        future_to_batch = {
+            ex.submit(translate_batch, batch, config, runner=runner): (i, batch)
+            for i, batch in enumerate(batches, 1)
+        }
+        done = 0
+        for fut in as_completed(future_to_batch):
+            i, batch = future_to_batch[fut]
+            translated = fut.result()  # translate_batch 內部已吞掉缺欄位，不會炸
+            for s in batch:
+                t = translated.get(s["id"], s["text"])  # 缺漏則保留原文，不破壞頁面
+                id_to_translation[s["id"]] = t
+                if s["id"] in translated:
+                    cache.put(hashes[s["id"]], lang, t)
+            done += 1
+            n_ok = sum(1 for s in batch if s["id"] in translated)
+            print(
+                f"[翻譯] 批 {i} 完成（成功 {n_ok}/{len(batch)} 段，"
+                f"累計 {done}/{len(batches)} 批，{time.monotonic() - t0:.1f}s）",
+                flush=True,
+            )
+        # 3. 取回並行跑完的整頁摘要
+        summary = summary_future.result()
 
     # 4. 依原順序組回
     print(f"[翻譯] 全部完成（總耗時 {time.monotonic() - t0:.1f}s）", flush=True)

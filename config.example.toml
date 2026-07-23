@@ -20,5 +20,9 @@ model = ""
 # 單批翻譯的文字長度上限（字元數）；超過自動分批。
 max_chars_per_batch = 6000
 
+# 同時並行翻譯的批次數（常駐 container 會同時跑這麼多個 docker exec claude）。
+# 調高→長頁面更快，但吃較多 CPU/RAM/額度；調低→較省資源但較慢。摘要會額外佔一緒。
+max_workers = 3
+
 # 網域黑名單：這些網域不翻譯（敏感站如銀行、信箱）。
 blacklist = []
