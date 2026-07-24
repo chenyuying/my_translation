@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "cc-translate",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "本地沈浸式翻譯：呼叫本機 claude 翻譯網頁",
   "browser_specific_settings": {
     "gecko": {
