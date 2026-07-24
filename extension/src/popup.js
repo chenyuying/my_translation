@@ -36,12 +36,18 @@ async function sendToActiveTab(action) {
 
 document.getElementById("translate").addEventListener("click", async () => {
   console.log("[cc-translate][popup] 點擊「翻譯本頁」");
-  setStatus("翻譯中…");
+  setStatus("啟動翻譯…");
   try {
+    // content script 收到後立刻回「已開始」的 ack（毫秒級），不會苦等整包翻完，
+    // 所以 popup 不再因 48s 長翻譯途中被關而斷線噴錯。實際進度/結果顯示在頁面上。
     const resp = await sendToActiveTab("translatePage");
-    console.log("[cc-translate][popup] content 回應:", resp);
-    if (resp && resp.ok) setStatus("完成，已翻譯 " + resp.count + " 段");
-    else setStatus("錯誤：" + (resp ? resp.error : "無回應，bridge 未啟動？"));
+    console.log("[cc-translate][popup] content ack:", resp);
+    if (resp && resp.ok) {
+      if (resp.started) setStatus("翻譯已開始，可關閉此視窗，結果會顯示在頁面上。");
+      else setStatus("此頁沒有可翻譯的段落。");
+    } else {
+      setStatus("錯誤：" + (resp ? resp.error : "無回應，bridge 未啟動？"));
+    }
   } catch (e) {
     console.error("[cc-translate][popup] 例外:", e);
     setStatus("錯誤：" + e.message + "（此頁面可能不支援，請在一般網頁使用）");

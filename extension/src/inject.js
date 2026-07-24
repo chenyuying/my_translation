@@ -83,7 +83,55 @@
   }
 
   function clearInjected(root) {
+    // 只清「注入到文章裡」的譯文/摘要/骨架；狀態條（cc-toast）是獨立回饋，
+    // 由 show/removeStatusToast 自己管理，故意不在此清掉——這樣失敗清骨架後，
+    // 錯誤提示仍留在畫面上。
     root.querySelectorAll(".cc-trans, .cc-summary, .cc-skeleton").forEach((n) => n.remove());
+  }
+
+  // ── 頁面浮動狀態條 ──────────────────────────────────────────────
+  // 翻譯進度 / 失敗原因直接顯示在頁面上，與 popup 是否開著無關（popup 是短命的，
+  // 長翻譯途中會被關掉，回饋不能只靠它）。全頁固定一個實例（單一 id）。
+  const STATUS_TOAST_ID = "cc-status-toast";
+
+  function ensureStatusToast(doc) {
+    let toast = doc.getElementById(STATUS_TOAST_ID);
+    if (!toast) {
+      toast = doc.createElement("div");
+      toast.id = STATUS_TOAST_ID;
+      doc.body.appendChild(toast);
+    }
+    return toast;
+  }
+
+  function showStatusToast(doc, message) {
+    const toast = ensureStatusToast(doc);
+    toast.className = "cc-toast cc-toast-info";
+    toast.textContent = message;
+    return toast;
+  }
+
+  function showErrorToast(doc, message) {
+    const toast = ensureStatusToast(doc);
+    toast.className = "cc-toast cc-toast-error";
+    toast.textContent = "";
+    const span = doc.createElement("span");
+    span.className = "cc-toast-msg";
+    span.textContent = message;
+    const close = doc.createElement("button");
+    close.type = "button";
+    close.className = "cc-toast-close";
+    close.textContent = "✕";
+    close.setAttribute("aria-label", "關閉");
+    close.addEventListener("click", () => toast.remove());
+    toast.appendChild(span);
+    toast.appendChild(close);
+    return toast;
+  }
+
+  function removeStatusToast(doc) {
+    const toast = doc.getElementById(STATUS_TOAST_ID);
+    if (toast) toast.remove();
   }
 
   const api = {
@@ -95,6 +143,9 @@
     buildSkeletonNode,
     injectSkeletons,
     injectSkeletonSummary,
+    showStatusToast,
+    showErrorToast,
+    removeStatusToast,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   global.ccInject = api;

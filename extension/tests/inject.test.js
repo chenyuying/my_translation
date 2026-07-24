@@ -8,6 +8,9 @@ const {
   buildSkeletonNode,
   injectSkeletons,
   injectSkeletonSummary,
+  showStatusToast,
+  showErrorToast,
+  removeStatusToast,
 } = require("../src/inject.js");
 
 describe("inject", () => {
@@ -104,5 +107,68 @@ describe("inject", () => {
     clearInjected(document.body);
     expect(document.querySelectorAll(".cc-skeleton").length).toBe(0);
     expect(document.querySelector("p").textContent).toBe("orig"); // 原文保留
+  });
+});
+
+describe("status toast", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("showStatusToast creates a single toast carrying the message", () => {
+    const toast = showStatusToast(document, "翻譯中…");
+    expect(toast.id).toBe("cc-status-toast");
+    expect(toast.classList.contains("cc-toast")).toBe(true);
+    expect(toast.textContent).toContain("翻譯中…");
+    expect(document.querySelectorAll("#cc-status-toast").length).toBe(1);
+  });
+
+  it("showStatusToast reuses the same element and updates the text", () => {
+    showStatusToast(document, "第一則");
+    showStatusToast(document, "第二則");
+    const all = document.querySelectorAll("#cc-status-toast");
+    expect(all.length).toBe(1); // 不重複疊加
+    expect(all[0].textContent).toContain("第二則");
+    expect(all[0].textContent).not.toContain("第一則");
+  });
+
+  it("showErrorToast shows an error toast with a dismiss button", () => {
+    const toast = showErrorToast(document, "bridge 502");
+    expect(toast.classList.contains("cc-toast-error")).toBe(true);
+    expect(toast.textContent).toContain("bridge 502");
+    expect(toast.querySelector(".cc-toast-close")).not.toBeNull();
+  });
+
+  it("clicking the dismiss button removes the toast", () => {
+    showErrorToast(document, "失敗原因");
+    document.querySelector(".cc-toast-close").click();
+    expect(document.getElementById("cc-status-toast")).toBeNull();
+  });
+
+  it("showErrorToast reuses the info toast rather than stacking", () => {
+    showStatusToast(document, "翻譯中…");
+    showErrorToast(document, "失敗了");
+    const all = document.querySelectorAll("#cc-status-toast");
+    expect(all.length).toBe(1);
+    expect(all[0].classList.contains("cc-toast-error")).toBe(true);
+    expect(all[0].classList.contains("cc-toast-info")).toBe(false);
+  });
+
+  it("removeStatusToast removes the toast", () => {
+    showStatusToast(document, "翻譯中…");
+    removeStatusToast(document);
+    expect(document.getElementById("cc-status-toast")).toBeNull();
+  });
+
+  it("removeStatusToast is a no-op when no toast exists", () => {
+    expect(() => removeStatusToast(document)).not.toThrow();
+  });
+
+  it("clearInjected leaves the toast intact (error survives skeleton clearing)", () => {
+    showErrorToast(document, "翻譯失敗：bridge 502");
+    document.body.insertAdjacentHTML("beforeend", '<p class="cc-skeleton"></p>');
+    clearInjected(document.body);
+    expect(document.getElementById("cc-status-toast")).not.toBeNull(); // toast 不被 clearInjected 清掉
+    expect(document.querySelectorAll(".cc-skeleton").length).toBe(0); // 但 skeleton 清掉
   });
 });

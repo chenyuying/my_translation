@@ -72,3 +72,48 @@
     background: rgba(128, 128, 128, 0.22) !important;
   }
 }
+
+/* 頁面右下角浮動狀態條：翻譯進度 / 失敗原因。與 popup 是否開著無關
+   （popup 短命，長翻譯途中會被關掉），所以回饋直接掛在頁面上。 */
+.cc-toast {
+  position: fixed !important;
+  right: 16px !important;
+  bottom: 16px !important;
+  z-index: 2147483647 !important; /* 蓋過網頁大多數浮層 */
+  max-width: 320px !important;
+  padding: 10px 14px !important;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25) !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 10px !important;
+  font-family: system-ui, -apple-system, sans-serif !important;
+}
+
+.cc-toast-info {
+  background: #2a6fb0 !important;
+  color: #fff !important;
+}
+
+.cc-toast-error {
+  background: #b03a2e !important;
+  color: #fff !important;
+}
+
+.cc-toast-close {
+  background: transparent !important;
+  border: none !important;
+  color: inherit !important;
+  font-size: 15px !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  opacity: 0.8 !important;
+  flex: none !important;
+}
+
+.cc-toast-close:hover {
+  opacity: 1 !important;
+}

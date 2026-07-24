@@ -116,6 +116,41 @@ def test_run_claude_omits_model_when_none():
     assert "--model" not in captured["cmd"]
 
 
+def test_run_claude_serializes_concurrent_calls():
+    # claude 每次啟動都「讀-改-寫」共用的 ~/.claude.json；兩個 claude 同時跑會把它
+    # 截斷寫壞（JSON 解析錯 → 整包翻譯 502）。bridge 是多執行緒（Flask threaded=True），
+    # 重疊的 /translate 會在不同執行緒平行呼叫 claude。run_claude 必須用行程級鎖把
+    # claude 子程序序列化：任何時刻最多一個在跑，跨所有請求、跨 batch 與 summary。
+    import threading
+    import time as _time
+
+    state_lock = threading.Lock()
+    concurrent = 0
+    max_concurrent = 0
+
+    def fake_runner(cmd, input, capture_output, text, timeout):
+        nonlocal concurrent, max_concurrent
+        with state_lock:
+            concurrent += 1
+            max_concurrent = max(max_concurrent, concurrent)
+        _time.sleep(0.05)  # 模擬 claude 執行時間，製造重疊機會
+        with state_lock:
+            concurrent -= 1
+        return FakeCompleted('{"ok": 1}')
+
+    cfg = make_config()
+    threads = [
+        threading.Thread(target=lambda: run_claude("p", cfg, runner=fake_runner))
+        for _ in range(5)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert max_concurrent == 1  # 序列化成功：claude 從不重疊
+
+
 def test_translate_batch_returns_id_to_translation_map():
     def fake_runner(cmd, input, capture_output, text, timeout):
         return FakeCompleted(
