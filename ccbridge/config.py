@@ -12,7 +12,6 @@ class Config:
     claude_cmd: list[str] = field(default_factory=lambda: ["claude"])
     model: str | None = None
     max_chars_per_batch: int = 6000
-    max_workers: int = 3
     blacklist: list[str] = field(default_factory=list)
 
 
@@ -27,6 +26,5 @@ def load_config(path: Path) -> Config:
         claude_cmd=data.get("claude_cmd", ["claude"]),
         model=model,
         max_chars_per_batch=data.get("max_chars_per_batch", 6000),
-        max_workers=data.get("max_workers", 3),
         blacklist=data.get("blacklist", []),
     )

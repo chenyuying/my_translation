@@ -12,7 +12,6 @@ def test_load_config_reads_all_fields(tmp_path):
         'claude_cmd = ["claude", "-x"]\n'
         'model = "opus"\n'
         'max_chars_per_batch = 4000\n'
-        'max_workers = 5\n'
         'blacklist = ["bank.com"]\n',
         encoding="utf-8",
     )
@@ -23,7 +22,6 @@ def test_load_config_reads_all_fields(tmp_path):
     assert cfg.claude_cmd == ["claude", "-x"]
     assert cfg.model == "opus"
     assert cfg.max_chars_per_batch == 4000
-    assert cfg.max_workers == 5
     assert cfg.blacklist == ["bank.com"]
 
 
@@ -36,7 +34,6 @@ def test_load_config_applies_defaults(tmp_path):
     assert cfg.claude_cmd == ["claude"]
     assert cfg.model is None  # 空字串 / 缺省 → None
     assert cfg.max_chars_per_batch == 6000
-    assert cfg.max_workers == 3  # 預設並行 3 批
     assert cfg.blacklist == []
 
 

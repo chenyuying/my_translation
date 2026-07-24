@@ -217,32 +217,3 @@ def test_translate_page_batches_when_over_char_limit(tmp_path):
     result = translate_page(segments, cfg, cache, runner=fake_runner)
     assert len(batch_inputs) == 2
     assert len(result["translations"]) == 3
-
-
-def test_translate_page_runs_batches_concurrently(tmp_path):
-    # 多批應「並行」送給 claude，而非逐批序列。用 Barrier 當會合點：
-    # 只有當 N 批真的同時在跑，Barrier(N) 才會全部通過；若是序列執行，
-    # 第一批會卡在 barrier.wait() 等不到其他批 → 逾時 BrokenBarrierError → 測試失敗。
-    import re
-    import json as _json
-    import threading
-
-    cache = Cache(tmp_path / "c.sqlite3")
-    n_batches = 3
-    barrier = threading.Barrier(n_batches, timeout=5)
-
-    def fake_runner(cmd, input, capture_output, text, timeout):
-        if "summarize" in input.lower():
-            return FakeCompleted('{"summary": "摘要"}')
-        barrier.wait()  # 序列執行會在此死等 → 逾時
-        ids = re.findall(r'"id": "(seg\d+)"', input)
-        return FakeCompleted(
-            _json.dumps({"translations": [{"id": i, "translation": "x"} for i in ids]})
-        )
-
-    # 每段 100 字、限 100 → 每段各自成一批（共 3 批）。max_workers 給足以容納摘要+3 批。
-    segments = [{"id": f"seg{i}", "text": "a" * 100} for i in range(n_batches)]
-    cfg = make_config(target_lang="正體中文", max_chars_per_batch=100, max_workers=n_batches + 1)
-    result = translate_page(segments, cfg, cache, runner=fake_runner)
-    assert len(result["translations"]) == n_batches
-    assert result["summary"] == "摘要"
