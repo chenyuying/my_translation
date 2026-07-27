@@ -37,20 +37,52 @@
     return frag;
   }
 
-  function buildSkeletonNode(sourceEl) {
+  function buildSkeletonNode(sourceEl, id) {
     // 沿用原段落標籤讓佔位版面一致；清空原文、放進 shimmer 灰條當「翻譯中」佔位。
     const node = sourceEl.cloneNode(false);
     node.removeAttribute("data-cc-id");
     node.removeAttribute("id");
     node.className = "cc-skeleton"; // 只留骨架 class，不帶原站 class（避免原樣式干擾佔位外觀）
+    // 標上對應段落 id，讓譯文分批回來時能精準找到並替換「這一段」的骨架
+    // （streaming：其他段落的骨架仍留著，繼續轉圈）。
+    if (id != null) node.dataset.ccSkeletonFor = id;
     node.appendChild(buildSkeletonLines(sourceEl.ownerDocument, 2));
     return node;
   }
 
   function injectSkeletons(items) {
-    items.forEach(({ el }) => {
-      el.insertAdjacentElement("afterend", buildSkeletonNode(el));
+    items.forEach(({ el, id }) => {
+      el.insertAdjacentElement("afterend", buildSkeletonNode(el, id));
     });
+  }
+
+  // 逐批注入：譯文一批批回來時，把「這批」段落的骨架換成真正譯文，
+  // 其餘尚未翻的段落骨架不動（繼續顯示翻譯中）。
+  function injectBatchTranslations(items) {
+    items.forEach(({ el, id, translation }) => {
+      // 先插譯文（緊接在原段落之後），再移除同段落的骨架，收斂成 [原文, 譯文]。
+      el.insertAdjacentElement("afterend", buildTranslationNode(el, translation));
+      if (id != null) {
+        const skel = el.ownerDocument.querySelector(
+          '.cc-skeleton[data-cc-skeleton-for="' + id + '"]'
+        );
+        if (skel) skel.remove();
+      }
+    });
+  }
+
+  // 只清「還在轉圈的骨架」，保留已注入的譯文（cc-trans）與真正摘要卡。
+  // streaming 收尾 / 中途失敗時用：已翻好的批次留在畫面上，未翻的骨架清掉。
+  function clearSkeletons(root) {
+    root.querySelectorAll(".cc-skeleton").forEach((n) => n.remove());
+  }
+
+  // 摘要回來時，把骨架摘要卡（或舊摘要卡）換成真正摘要。
+  function injectSummary(container, summary) {
+    container.ownerDocument
+      .querySelectorAll(".cc-summary")
+      .forEach((n) => n.remove());
+    return injectSummaryCard(container, summary);
   }
 
   function injectSkeletonSummary(container) {
@@ -138,8 +170,11 @@
     buildTranslationNode,
     buildSummaryCard,
     injectTranslations,
+    injectBatchTranslations,
     injectSummaryCard,
+    injectSummary,
     clearInjected,
+    clearSkeletons,
     buildSkeletonNode,
     injectSkeletons,
     injectSkeletonSummary,

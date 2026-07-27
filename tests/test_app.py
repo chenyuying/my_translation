@@ -57,7 +57,13 @@ class FakeCompleted:
         self.returncode = 0
 
 
-def test_translate_returns_translations_and_summary(tmp_path):
+def _parse_ndjson(resp):
+    """把 streaming 回應的 body 拆成事件 list。"""
+    text = resp.get_data(as_text=True)
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
+def test_translate_streams_batches_then_summary(tmp_path):
     cfg = make_config(tmp_path, target_lang="正體中文")
     cache = Cache(tmp_path / "c.sqlite3")
 
@@ -76,6 +82,12 @@ def test_translate_returns_translations_and_summary(tmp_path):
         headers={"X-CC-Token": "secret", "Origin": "chrome-extension://abc"},
     )
     assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["translations"] == [{"id": "s1", "translation": "你好"}]
-    assert data["summary"] == "整頁摘要"
+    assert resp.mimetype == "application/x-ndjson"
+    events = _parse_ndjson(resp)
+    # 逐批事件 + 一個 summary 事件
+    batches = [e for e in events if e["type"] == "batch"]
+    summaries = [e for e in events if e["type"] == "summary"]
+    assert [t for b in batches for t in b["translations"]] == [
+        {"id": "s1", "translation": "你好"}
+    ]
+    assert summaries == [{"type": "summary", "summary": "整頁摘要"}]

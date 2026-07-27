@@ -16,7 +16,10 @@ def main():
     cache = Cache(repo_root / "cache.sqlite3")
     app = create_app(config, cache)
     print(f"cc-translate bridge 監聽 http://127.0.0.1:{config.port}")
-    app.run(host="127.0.0.1", port=config.port)
+    # threaded=True：streaming 的 /translate 會佔住一個 worker 逾百秒，單執行緒下會
+    # 卡住 /health 與其他分頁的翻譯。多執行緒讓各請求獨立串流；claude 子程序仍由
+    # run_claude 的 _CLAUDE_LOCK 序列化（不會並行寫壞 ~/.claude.json）。
+    app.run(host="127.0.0.1", port=config.port, threaded=True)
 
 
 if __name__ == "__main__":

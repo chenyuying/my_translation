@@ -252,3 +252,34 @@ def test_translate_page_batches_when_over_char_limit(tmp_path):
     result = translate_page(segments, cfg, cache, runner=fake_runner)
     assert len(batch_inputs) == 2
     assert len(result["translations"]) == 3
+
+
+def test_translate_page_stream_emits_cached_then_batches_then_summary(tmp_path):
+    # streaming 契約：快取命中先一次 yield（前端瞬間可畫）→ 逐批 yield 翻譯 →
+    # 最後 yield 一次 summary。每批翻好也即時寫回快取。
+    from ccbridge.translator import text_hash, translate_page_stream
+
+    cache = Cache(tmp_path / "c.sqlite3")
+    cache.put(text_hash("Hello"), "正體中文", "你好(快取)")
+
+    def fake_runner(cmd, input, capture_output, text, timeout):
+        if "summarize" in input.lower():
+            return FakeCompleted('{"summary": "摘要"}')
+        return FakeCompleted('{"translations": [{"id": "s2", "translation": "世界"}]}')
+
+    segments = [{"id": "s1", "text": "Hello"}, {"id": "s2", "text": "World"}]
+    cfg = make_config(target_lang="正體中文")
+    events = list(translate_page_stream(segments, cfg, cache, runner=fake_runner))
+
+    types = [e["type"] for e in events]
+    assert types.count("summary") == 1
+    assert types[-1] == "summary"  # summary 最後
+    batches = [e for e in events if e["type"] == "batch"]
+    # 第一批是快取命中（瞬間可畫）
+    assert batches[0]["translations"] == [{"id": "s1", "translation": "你好(快取)"}]
+    # 之後才是 claude 翻的 miss
+    later = [t for b in batches[1:] for t in b["translations"]]
+    assert {"id": "s2", "translation": "世界"} in later
+    assert events[-1]["summary"] == "摘要"
+    # miss 翻完即時寫回快取
+    assert cache.get(text_hash("World"), "正體中文") == "世界"

@@ -6,30 +6,6 @@ async function getSettings() {
   };
 }
 
-async function callBridge(path, body) {
-  const { bridgeUrl, token } = await getSettings();
-  console.log("[cc-translate][bg] callBridge →", bridgeUrl + path, "| token:", token ? "有" : "空");
-  const resp = await fetch(bridgeUrl + path, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CC-Token": token,
-    },
-    body: JSON.stringify(body),
-  });
-  console.log("[cc-translate][bg] fetch 回應:", resp.status, resp.ok);
-  if (!resp.ok) {
-    let detail = "";
-    try {
-      detail = JSON.stringify(await resp.json());
-    } catch (e) {
-      detail = await resp.text();
-    }
-    throw new Error("bridge " + resp.status + ": " + detail);
-  }
-  return resp.json();
-}
-
 // content script 連不上時現場補注入，免去手動重整分頁（與 popup 同邏輯）。
 async function ensureContentScript(tabId) {
   try {
@@ -48,14 +24,75 @@ async function ensureContentScript(tabId) {
   });
 }
 
-// content script 用一條 port 送翻譯請求、收翻譯結果（見 content.js），而非 sendMessage。
-// 兩個關鍵好處：
-//   (1) port 連著就撐住這個「非常駐背景頁」，長翻譯（~48s）的 fetch 不會被瀏覽器
-//       途中回收中斷；
-//   (2) 結果走 port.postMessage 回傳，不受 sendMessage「回應通道」在長時間後被拆掉的
-//       限制——那正是「Could not establish connection. Receiving end does not exist.」
-//       這個錯的來源。
-// 這是「第一次 48s 翻譯沒出現、第二次 9s 快取版有出現」那個 bug 的根因修復。
+// bridge 的 /translate 現在以 NDJSON streaming 回傳（每翻完一批一行 JSON）。
+// 這裡邊讀 response body、邊把每個事件（batch / summary / error）透過 port 轉發給
+// content script，讓它逐批注入。translateStream 一律 resolve（成功/失敗都不 throw），
+// 事件已即時送出，回傳值僅供背景端記 log。
+async function translateStream(body, onEvent) {
+  const { bridgeUrl, token } = await getSettings();
+  console.log("[cc-translate][bg] translateStream →", bridgeUrl + "/translate");
+  const resp = await fetch(bridgeUrl + "/translate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CC-Token": token },
+    body: JSON.stringify(body),
+  });
+  console.log("[cc-translate][bg] fetch 回應:", resp.status, resp.ok);
+  if (!resp.ok) {
+    let detail = "";
+    try {
+      detail = JSON.stringify(await resp.json());
+    } catch (e) {
+      try {
+        detail = await resp.text();
+      } catch (_) {}
+    }
+    onEvent({ type: "error", error: "bridge " + resp.status + ": " + detail });
+    return;
+  }
+  // 逐行讀 NDJSON：跨 chunk 的半行用 buf 暫存，遇到 \n 才解析成一個事件。
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  const flushLines = (final) => {
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (line) emitLine(line);
+    }
+    if (final) {
+      const tail = buf.trim();
+      if (tail) emitLine(tail);
+    }
+  };
+  const emitLine = (line) => {
+    let ev;
+    try {
+      ev = JSON.parse(line);
+    } catch (e) {
+      console.warn("[cc-translate][bg] 無法解析事件行，略過:", line);
+      return;
+    }
+    onEvent(ev);
+  };
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    flushLines(false);
+  }
+  buf += decoder.decode();
+  flushLines(true);
+}
+
+// content script 用一條 port 送翻譯請求、逐批收翻譯結果（見 content.js），而非 sendMessage。
+// 三個關鍵好處：
+//   (1) port 連著、且串流期間持續有資料流動，撐住這個「非常駐背景頁」，長翻譯（>100s）
+//       的 fetch 不會被瀏覽器途中回收中斷；
+//   (2) 每一批（batch）與摘要（summary）即時走 port.postMessage 回傳，前端邊收邊注入，
+//       不必等整頁翻完；
+//   (3) 不受 sendMessage「回應通道」長時間後被拆掉的限制（"Receiving end does not
+//       exist." 的來源）。
 browser.runtime.onConnect.addListener((port) => {
   console.log("[cc-translate][bg] port 連上:", port.name);
   port.onDisconnect.addListener(() => {
@@ -65,22 +102,22 @@ browser.runtime.onConnect.addListener((port) => {
   port.onMessage.addListener(async (msg) => {
     if (!msg || msg.action !== "translate") return;
     console.log("[cc-translate][bg] port 收到翻譯請求，段落數:", msg.segments && msg.segments.length);
-    try {
-      const data = await callBridge("/translate", {
-        url: msg.url,
-        title: msg.title,
-        segments: msg.segments,
-      });
+    const post = (ev) => {
       try {
-        port.postMessage({ ok: true, data });
+        port.postMessage(ev);
       } catch (e) {
-        console.error("[cc-translate][bg] 回傳結果失敗（port 可能已斷）:", e);
+        // port 可能已被 content 端關閉（例如收到 error/done 後主動斷）——忽略。
       }
+    };
+    try {
+      await translateStream(
+        { url: msg.url, title: msg.title, segments: msg.segments },
+        post
+      );
+      post({ type: "done" }); // 串流讀完，通知前端收尾
     } catch (e) {
-      console.error("[cc-translate][bg] callBridge 失敗:", e);
-      try {
-        port.postMessage({ ok: false, error: String((e && e.message) || e) });
-      } catch (_) {}
+      console.error("[cc-translate][bg] translateStream 失敗:", e);
+      post({ type: "error", error: String((e && e.message) || e) });
     }
   });
 });

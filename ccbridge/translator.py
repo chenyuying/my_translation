@@ -164,40 +164,54 @@ def _split_batches(segments: list[dict], max_chars: int) -> list[list[dict]]:
     return batches
 
 
-def translate_page(segments: list[dict], config, cache, runner=subprocess.run) -> dict:
+def translate_page_stream(segments: list[dict], config, cache, runner=subprocess.run):
+    """逐批翻譯，邊翻邊 yield 事件（供 /translate 以 NDJSON streaming 回傳）。
+
+    yield 的每個事件都是可 JSON 序列化的 dict：
+      {"type": "batch",   "translations": [{"id", "translation"}, ...]}  # 一批（含快取命中批）
+      {"type": "summary", "summary": "<整頁摘要>"}                        # 最後一次
+    前端一收到 batch 就把該批段落的骨架換成譯文，不必等整頁翻完，
+    避免長翻譯（>100s）期間前端連線逾時 / 被回收而整包遺失。
+    """
     lang = config.target_lang
     # 1. 算 hash、查快取
     hashes = {s["id"]: text_hash(s["text"]) for s in segments}
     cached = cache.get_many(list(hashes.values()), lang)  # {hash: translation}
 
-    id_to_translation: dict[str, str] = {}
     misses: list[dict] = []
+    cached_items: list[dict] = []
     for s in segments:
         h = hashes[s["id"]]
         if h in cached:
-            id_to_translation[s["id"]] = cached[h]
+            cached_items.append({"id": s["id"], "translation": cached[h]})
         else:
             misses.append(s)
 
-    # 2. 未命中「逐批序列」翻譯，寫回快取。
-    #    ⚠️ claude 不可並行：共用單一 ~/.claude.json，多個 claude 同時讀-改-寫會把它
-    #    寫壞（JSON EOF）→ 整包 502。實際防護在 run_claude 的 _CLAUDE_LOCK（行程級鎖，
-    #    擋跨請求的重疊）；這裡逐批序列只是「本請求內」自然不重疊，兩者相輔。
-    #    仍未解：host / 其他 container 也跑 claude 共用同檔時的相撞——需獨立設定檔。
     batches = _split_batches(misses, config.max_chars_per_batch)
     print(
-        f"[翻譯] 共 {len(segments)} 段：{len(segments) - len(misses)} 段命中快取、"
+        f"[翻譯] 共 {len(segments)} 段：{len(cached_items)} 段命中快取、"
         f"{len(misses)} 段需翻譯，分 {len(batches)} 批",
         flush=True,
     )
+
+    # 快取命中的先一次回傳，讓前端瞬間畫出這些段落。
+    if cached_items:
+        yield {"type": "batch", "translations": cached_items}
+
+    # 2. 未命中「逐批序列」翻譯，每翻完一批就 yield 出去並寫回快取。
+    #    ⚠️ claude 不可並行：共用單一 ~/.claude.json，多個 claude 同時讀-改-寫會把它
+    #    寫壞（JSON EOF）→ 整包失敗。實際防護在 run_claude 的 _CLAUDE_LOCK（行程級鎖，
+    #    擋跨請求的重疊）；這裡逐批序列只是「本請求內」自然不重疊，兩者相輔。
+    #    仍未解：host / 其他 container 也跑 claude 共用同檔時的相撞——需獨立設定檔。
     t0 = time.monotonic()
     for i, batch in enumerate(batches, 1):
         print(f"[翻譯] 第 {i}/{len(batches)} 批（{len(batch)} 段）翻譯中…", flush=True)
         t_batch = time.monotonic()
         translated = translate_batch(batch, config, runner=runner)
+        items = []
         for s in batch:
             t = translated.get(s["id"], s["text"])  # 缺漏則保留原文，不破壞頁面
-            id_to_translation[s["id"]] = t
+            items.append({"id": s["id"], "translation": t})
             if s["id"] in translated:
                 cache.put(hashes[s["id"]], lang, t)
         n_ok = sum(1 for s in batch if s["id"] in translated)
@@ -206,13 +220,28 @@ def translate_page(segments: list[dict], config, cache, runner=subprocess.run) -
             f"本批 {time.monotonic() - t_batch:.1f}s，累計 {time.monotonic() - t0:.1f}s）",
             flush=True,
         )
+        yield {"type": "batch", "translations": items}
 
     # 3. 整頁摘要（同樣序列，接在批次之後）
     print("[翻譯] 產生整頁摘要中…", flush=True)
     full_text = "\n\n".join(s["text"] for s in segments)
     summary = summarize(full_text, config, runner=runner)
-
-    # 4. 依原順序組回
     print(f"[翻譯] 全部完成（總耗時 {time.monotonic() - t0:.1f}s）", flush=True)
+    yield {"type": "summary", "summary": summary}
+
+
+def translate_page(segments: list[dict], config, cache, runner=subprocess.run) -> dict:
+    """非 streaming 版：把 translate_page_stream 的事件收攏成單一 dict（依原順序）。
+
+    保留給不需要漸進顯示的呼叫者與測試；/translate 走 streaming 版。
+    """
+    id_to_translation: dict[str, str] = {}
+    summary = ""
+    for ev in translate_page_stream(segments, config, cache, runner=runner):
+        if ev["type"] == "batch":
+            for t in ev["translations"]:
+                id_to_translation[t["id"]] = t["translation"]
+        elif ev["type"] == "summary":
+            summary = ev["summary"]
     translations = [{"id": s["id"], "translation": id_to_translation[s["id"]]} for s in segments]
     return {"translations": translations, "summary": summary}

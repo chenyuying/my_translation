@@ -3,8 +3,11 @@ const {
   buildTranslationNode,
   buildSummaryCard,
   injectTranslations,
+  injectBatchTranslations,
   injectSummaryCard,
+  injectSummary,
   clearInjected,
+  clearSkeletons,
   buildSkeletonNode,
   injectSkeletons,
   injectSkeletonSummary,
@@ -107,6 +110,60 @@ describe("inject", () => {
     clearInjected(document.body);
     expect(document.querySelectorAll(".cc-skeleton").length).toBe(0);
     expect(document.querySelector("p").textContent).toBe("orig"); // 原文保留
+  });
+});
+
+describe("streaming injection (逐批)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("injectSkeletons tags each skeleton with its segment id", () => {
+    document.body.innerHTML = '<p data-cc-id="seg0">A</p>';
+    const el = document.querySelector('[data-cc-id="seg0"]');
+    injectSkeletons([{ el, id: "seg0" }]);
+    const skel = document.querySelector('.cc-skeleton[data-cc-skeleton-for="seg0"]');
+    expect(skel).not.toBeNull();
+    expect(el.nextElementSibling).toBe(skel);
+  });
+
+  it("injectBatchTranslations replaces that segment's skeleton with the translation", () => {
+    document.body.innerHTML = '<p data-cc-id="seg0">A</p><p data-cc-id="seg1">B</p>';
+    const a = document.querySelector('[data-cc-id="seg0"]');
+    const b = document.querySelector('[data-cc-id="seg1"]');
+    injectSkeletons([{ el: a, id: "seg0" }, { el: b, id: "seg1" }]);
+
+    // 只回 seg0 這一批
+    injectBatchTranslations([{ id: "seg0", el: a, translation: "甲" }]);
+
+    // seg0：骨架換成譯文
+    expect(a.nextElementSibling.classList.contains("cc-trans")).toBe(true);
+    expect(a.nextElementSibling.textContent).toBe("甲");
+    expect(document.querySelector('.cc-skeleton[data-cc-skeleton-for="seg0"]')).toBeNull();
+    // seg1：尚未回來，骨架仍在
+    expect(document.querySelector('.cc-skeleton[data-cc-skeleton-for="seg1"]')).not.toBeNull();
+  });
+
+  it("clearSkeletons removes only skeletons, keeping translations and summary", () => {
+    document.body.innerHTML =
+      '<div class="cc-trans">譯</div>' +
+      '<p class="cc-skeleton" data-cc-skeleton-for="seg0"></p>' +
+      '<details class="cc-summary"><summary>s</summary></details>';
+    clearSkeletons(document.body);
+    expect(document.querySelectorAll(".cc-skeleton").length).toBe(0);
+    expect(document.querySelector(".cc-trans")).not.toBeNull(); // 已注入譯文保留
+    expect(document.querySelector(".cc-summary")).not.toBeNull(); // 真摘要保留
+  });
+
+  it("injectSummary swaps the skeleton summary card for the real one", () => {
+    document.body.innerHTML = "<article><p>first</p></article>";
+    const article = document.querySelector("article");
+    injectSkeletonSummary(article); // 先放骨架摘要卡
+    const card = injectSummary(article, "真摘要");
+    expect(document.querySelectorAll(".cc-summary").length).toBe(1); // 不疊加
+    expect(card.classList.contains("cc-skeleton")).toBe(false); // 是真卡不是骨架
+    expect(article.firstElementChild).toBe(card);
+    expect(card.querySelector(".cc-summary-body").textContent).toBe("真摘要");
   });
 });
 

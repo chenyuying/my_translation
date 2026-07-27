@@ -6,17 +6,24 @@
     return document.querySelector("article, main") || document.body;
   }
 
-  // 透過一條 port 送請求、收結果（不用 sendMessage）。
-  // port 連著就撐住背景頁，讓長翻譯（~48s）的 fetch 不被回收中斷；結果走
-  // port.postMessage 回來，避開 sendMessage 長時間後「Receiving end does not exist」的坑。
-  // 一律 resolve（不 reject）：成功給 {ok:true,data}，失敗/斷線給 {ok:false,error}。
-  function requestTranslateViaPort(payload) {
+  // 透過一條 port 送請求、逐批收結果（不用 sendMessage）。
+  // port 連著、串流期間持續有資料流動，撐住背景頁，讓長翻譯（>100s）的 fetch 不被回收
+  // 中斷；每一批（batch）與摘要（summary）走 port.postMessage 即時回來，邊收邊注入，
+  // 也避開 sendMessage 長時間後「Receiving end does not exist」的坑。
+  //
+  // handlers.onBatch(translations) / handlers.onSummary(summary) 於每個事件即時觸發。
+  // 回傳 Promise 於串流結束時 resolve：正常收到 done → {ok:true}；
+  // 收到 error 或 port 中途斷線 → {ok:false, error}。一律 resolve、不 reject。
+  function requestTranslateViaPort(payload, handlers) {
     return new Promise((resolve) => {
       let settled = false;
       const done = (r) => {
         if (!settled) {
           settled = true;
           resolve(r);
+          try {
+            port.disconnect();
+          } catch (_) {}
         }
       };
       let port;
@@ -26,11 +33,25 @@
         done({ ok: false, error: "無法連上背景頁：" + ((e && e.message) || e) });
         return;
       }
-      port.onMessage.addListener((msg) => {
-        done(msg || { ok: false, error: "背景頁回應為空" });
-        try {
-          port.disconnect();
-        } catch (_) {}
+      port.onMessage.addListener((ev) => {
+        if (!ev || !ev.type) return;
+        if (ev.type === "batch") {
+          try {
+            handlers.onBatch(ev.translations || []);
+          } catch (err) {
+            console.error("[cc-translate][content] onBatch 失敗:", err);
+          }
+        } else if (ev.type === "summary") {
+          try {
+            handlers.onSummary(ev.summary || "");
+          } catch (err) {
+            console.error("[cc-translate][content] onSummary 失敗:", err);
+          }
+        } else if (ev.type === "error") {
+          done({ ok: false, error: ev.error || "翻譯失敗" });
+        } else if (ev.type === "done") {
+          done({ ok: true });
+        }
       });
       port.onDisconnect.addListener(() => {
         // Firefox 用 port.error、Chrome 用 runtime.lastError。
@@ -47,43 +68,65 @@
   // 同時撐住背景頁與傳輸結果（見 background.js），fetch 才能跑完、結果才收得到。
   async function runTranslate(segments) {
     lastSegmentEls = segments.map(({ id, el }) => ({ id, el }));
+    const idToEl = new Map(lastSegmentEls.map((s) => [s.id, s.el]));
 
     // 立即回饋：頁面狀態條 + 每段下方/文章頂端的 skeleton 佔位。
-    ccInject.showStatusToast(document, "翻譯中…可關閉此視窗，結果會顯示在頁面上");
+    // skeleton 帶上段落 id，讓譯文分批回來時能精準替換「那一段」。
+    ccInject.showStatusToast(document, "翻譯中…可關閉此視窗，結果會陸續顯示在頁面上");
     ccInject.injectSkeletons(lastSegmentEls);
     ccInject.injectSkeletonSummary(summaryContainer());
 
-    console.log("[cc-translate][content] 送往 background 翻譯（port）…");
-    const result = await requestTranslateViaPort({
-      action: "translate",
-      url: location.href,
-      title: document.title,
-      segments: segments.map(({ id, text }) => ({ id, text })),
-    });
-    console.log("[cc-translate][content] background 回應:", result);
+    let doneCount = 0;
+
+    console.log("[cc-translate][content] 送往 background 翻譯（port，streaming）…");
+    const result = await requestTranslateViaPort(
+      {
+        action: "translate",
+        url: location.href,
+        title: document.title,
+        segments: segments.map(({ id, text }) => ({ id, text })),
+      },
+      {
+        // 每收到一批：把該批段落的 skeleton 換成真正譯文，其餘段落骨架不動。
+        onBatch: (translations) => {
+          const items = translations
+            .filter((t) => idToEl.has(t.id))
+            .map((t) => ({ id: t.id, el: idToEl.get(t.id), translation: t.translation }));
+          ccInject.injectBatchTranslations(items);
+          doneCount += items.length;
+          ccInject.showStatusToast(
+            document,
+            `翻譯中…已完成 ${doneCount}/${lastSegmentEls.length} 段（可關閉此視窗）`
+          );
+          console.log("[cc-translate][content] 已注入一批", items.length, "段，累計", doneCount);
+        },
+        // 收到摘要：把骨架摘要卡換成真正摘要。
+        onSummary: (summary) => {
+          lastSummary = summary || "";
+          if (lastSummary) ccInject.injectSummary(summaryContainer(), lastSummary);
+        },
+      }
+    );
+    console.log("[cc-translate][content] 串流結束:", result);
+
+    // 收尾：清掉殘餘骨架（正常情況都已被各批替換；中途失敗則清掉未翻的骨架，
+    // 但保留已注入的批次不動）。
+    ccInject.clearSkeletons(document.body);
 
     if (!result || !result.ok) {
-      ccInject.clearInjected(document.body); // 失敗清掉 skeleton，還原頁面
       ccInject.showErrorToast(
         document,
-        "翻譯失敗：" + ((result && result.error) || "無回應，bridge 未啟動？")
+        "翻譯" +
+          (doneCount > 0 ? "中斷" : "失敗") +
+          "：" +
+          ((result && result.error) || "無回應，bridge 未啟動？") +
+          (doneCount > 0 ? `（已完成 ${doneCount} 段）` : "")
       );
       return;
     }
 
-    // 成功：清掉 skeleton 再注入真正譯文（原段落節點未動，位置不變）。
-    ccInject.clearInjected(document.body);
-    const idToEl = new Map(lastSegmentEls.map((s) => [s.id, s.el]));
-    const items = (result.data.translations || [])
-      .filter((t) => idToEl.has(t.id))
-      .map((t) => ({ el: idToEl.get(t.id), translation: t.translation }));
-    ccInject.injectTranslations(items);
-    lastSummary = result.data.summary || "";
-    if (lastSummary) {
-      ccInject.injectSummaryCard(summaryContainer(), lastSummary);
-    }
-    ccInject.removeStatusToast(document); // 成功不留提示（skeleton 已負責視覺進度）
-    console.log("[cc-translate][content] 完成，已翻譯", items.length, "段");
+    ccInject.removeStatusToast(document); // 成功不留提示
+    console.log("[cc-translate][content] 完成，共翻譯", doneCount, "段");
   }
 
   // 「發射後不等」：收到指令就快速回 ack（確認 content script 在、此頁支援），
