@@ -16,3 +16,7 @@ package-lock.json
 .env
 extension/web-ext-artifacts/
 extension/.amo-upload-uuid
+*.xpi
+
+# macOS
+.DS_Store
