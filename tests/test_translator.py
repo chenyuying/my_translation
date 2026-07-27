@@ -77,7 +77,7 @@ class FakeCompleted:
 
 
 def make_config(**kw):
-    base = dict(token="t", vault_path="/v", claude_cmd=["claude"], max_chars_per_batch=6000)
+    base = dict(token="t", claude_cmd=["claude"], max_chars_per_batch=6000)
     base.update(kw)
     return Config(**base)
 

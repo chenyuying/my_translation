@@ -1,6 +1,5 @@
 # 複製本檔為 config.toml 後修改。config.toml 不進 git。
 port = 8765
-vault_path = "/Users/yuying/work/my_note"
 target_lang = "正體中文"
 
 # 共享密鑰：擴充每次請求須帶 X-CC-Token，與此值相符才放行。

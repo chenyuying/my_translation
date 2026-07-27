@@ -6,7 +6,6 @@ from pathlib import Path
 @dataclass
 class Config:
     token: str
-    vault_path: str
     port: int = 8765
     target_lang: str = "正體中文"
     claude_cmd: list[str] = field(default_factory=lambda: ["claude"])
@@ -20,7 +19,6 @@ def load_config(path: Path) -> Config:
     model = data.get("model") or None  # 空字串視為未指定
     return Config(
         token=data["token"],
-        vault_path=data["vault_path"],
         port=data.get("port", 8765),
         target_lang=data.get("target_lang", "正體中文"),
         claude_cmd=data.get("claude_cmd", ["claude"]),

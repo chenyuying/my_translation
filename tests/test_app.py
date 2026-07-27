@@ -6,7 +6,7 @@ from ccbridge.cache import Cache
 
 
 def make_config(tmp_path, **kw):
-    base = dict(token="secret", vault_path=str(tmp_path), claude_cmd=["claude"])
+    base = dict(token="secret", claude_cmd=["claude"])
     base.update(kw)
     return Config(**base)
 
@@ -79,46 +79,3 @@ def test_translate_returns_translations_and_summary(tmp_path):
     data = resp.get_json()
     assert data["translations"] == [{"id": "s1", "translation": "你好"}]
     assert data["summary"] == "整頁摘要"
-
-
-def test_save_writes_files_and_returns_paths(tmp_path):
-    cfg = make_config(tmp_path)
-    cache = Cache(tmp_path / "c.sqlite3")
-    app = create_app(cfg, cache, runner=lambda *a, **k: None)
-    app.testing = True
-    client = app.test_client()
-
-    resp = client.post(
-        "/save",
-        json={
-            "url": "https://example.com/article",
-            "title": "My Article",
-            "html": "<html><body><p>hi</p><script>x()</script></body></html>",
-            "summary": "摘要內容",
-        },
-        headers={"X-CC-Token": "secret", "Origin": "chrome-extension://abc"},
-    )
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["ok"] is True
-    # 檔案確實寫出，且 script 已被移除
-    from pathlib import Path
-    html_text = Path(data["html_path"]).read_text(encoding="utf-8")
-    assert "<script" not in html_text.lower()
-    md_text = Path(data["md_path"]).read_text(encoding="utf-8")
-    assert "摘要內容" in md_text
-
-
-def test_save_rejects_blacklisted_url(tmp_path):
-    cfg = make_config(tmp_path, blacklist=["bank.com"])
-    cache = Cache(tmp_path / "c.sqlite3")
-    app = create_app(cfg, cache, runner=lambda *a, **k: None)
-    app.testing = True
-    client = app.test_client()
-
-    resp = client.post(
-        "/save",
-        json={"url": "https://bank.com/x", "title": "t", "html": "<html></html>", "summary": ""},
-        headers={"X-CC-Token": "secret", "Origin": "chrome-extension://abc"},
-    )
-    assert resp.status_code == 403
