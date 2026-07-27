@@ -6,9 +6,17 @@
     return document.querySelector("article, main") || document.body;
   }
 
+  // 每 20s 從 content 送一次 keepalive 心跳到背景頁。
+  // 為什麼需要：非常駐背景頁（event page）閒置約 30s 就會被瀏覽器回收。單一批
+  // claude 呼叫要 ~38s，這段期間 HTTP 串流上「沒有任何資料流動」，背景頁看起來就是
+  // 閒置的 → 途中被回收 → port 斷線、翻譯中斷（實測翻到第 48 段時發生）。
+  // content script 跟著分頁存活、穩定，定時送訊息即可重置背景頁的閒置計時器，
+  // 跨過批次之間的長空窗。20s < 30s，留足安全邊際。
+  const KEEPALIVE_MS = 20000;
+
   // 透過一條 port 送請求、逐批收結果（不用 sendMessage）。
-  // port 連著、串流期間持續有資料流動，撐住背景頁，讓長翻譯（>100s）的 fetch 不被回收
-  // 中斷；每一批（batch）與摘要（summary）走 port.postMessage 即時回來，邊收邊注入，
+  // port 連著 + keepalive 心跳撐住背景頁，讓長翻譯（>100s）的 fetch 不被回收中斷；
+  // 每一批（batch）與摘要（summary）走 port.postMessage 即時回來，邊收邊注入，
   // 也避開 sendMessage 長時間後「Receiving end does not exist」的坑。
   //
   // handlers.onBatch(translations) / handlers.onSummary(summary) 於每個事件即時觸發。
@@ -17,9 +25,11 @@
   function requestTranslateViaPort(payload, handlers) {
     return new Promise((resolve) => {
       let settled = false;
+      let keepAlive = null;
       const done = (r) => {
         if (!settled) {
           settled = true;
+          if (keepAlive) clearInterval(keepAlive);
           resolve(r);
           try {
             port.disconnect();
@@ -59,6 +69,15 @@
         done({ ok: false, error: (e && e.message) || "背景頁連線中斷（可能被瀏覽器回收）" });
       });
       port.postMessage(payload);
+      // 開始心跳（背景頁收到訊息就重置閒置計時器，撐過批次間的長空窗）。
+      keepAlive = setInterval(() => {
+        try {
+          port.postMessage({ action: "keepalive" });
+        } catch (_) {
+          // port 已斷：停掉心跳（onDisconnect 會負責收尾）。
+          if (keepAlive) clearInterval(keepAlive);
+        }
+      }, KEEPALIVE_MS);
     });
   }
 
