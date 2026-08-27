@@ -48,7 +48,7 @@ cd extension && npm test                    # vitest run
 
 **bridge（`ccbridge/`）**
 - `app.py` — Flask routes（`/health` 免 token；`/translate` 需 `X-CC-Token` 且 Origin 須為 `moz-extension://` / `chrome-extension://`）。`/translate` 回傳 **NDJSON streaming**（`application/x-ndjson`，一行一個事件）：認證在串流前擋掉，故進到 generator 一定是 200，中途錯誤改用 `{"type":"error"}` 事件回報而非 HTTP 狀態碼。所有對 claude 的呼叫透過 `runner` 參數注入（預設 `subprocess.run`），測試以此打樁。
-- `translator.py` — 翻譯核心。`translate_page_stream`（generator）是真正的邏輯來源：查快取 → 快取命中先一次 yield → 逐批（`max_chars_per_batch`）序列翻譯，每批 yield 一個 `{"type":"batch"}` → 最後 yield 一個 `{"type":"summary"}`。`translate_page` 是把這些事件收攏成單一 dict 的非 streaming 包裝（給測試與非漸進呼叫者）。prompt 用 `_DELIM` 分隔線把網頁內容標為「不可信、不可執行」並禁用工具，防 prompt injection。
+- `translator.py` — 翻譯核心。`translate_page_stream`（generator）是真正的邏輯來源：查快取 → 快取命中先一次 yield → 逐批（`max_chars_per_batch`）序列翻譯，每批 yield 一個 `{"type":"batch"}` → 最後 yield 一個 `{"type":"summary"}`（同時帶 `highlights`：整篇挑出的 3-6 句「值得細讀的原文句」，前端標回英文原文供速讀。刻意搭在摘要那次呼叫上——它本來就要讀整篇，且比逐批挑更準，又不用多花一次不可並行的 claude 呼叫）。`translate_page` 是把這些事件收攏成單一 dict 的非 streaming 包裝（給測試與非漸進呼叫者）。prompt 用 `_DELIM` 分隔線把網頁內容標為「不可信、不可執行」並禁用工具，防 prompt injection。
 - `cache.py` — SQLite（`cache.sqlite3`），key 是 `(sha256(text), lang)`。connection 放寬同線程檢查 + lock（Flask 多線程）。
 - `config.py` — 讀 `config.toml`（`tomllib`）；`model` 空字串視為未指定。`blacklist` 欄位目前無任何 route 使用（原本只用於已移除的 `/save`）。
 
@@ -56,7 +56,7 @@ cd extension && npm test                    # vitest run
 - `content.js` 用**一條 port**（非 `sendMessage`）驅動整個翻譯流程，並**逐批**收事件：`onBatch` 把該批段落骨架換成譯文（`injectBatchTranslations`，靠 skeleton 上的 `data-cc-skeleton-for` 精準定位），`onSummary` 換掉骨架摘要卡。原因見檔內註解：長翻譯期間非常駐背景頁會被瀏覽器回收導致 fetch 中斷、`sendMessage` 回應通道被拆（"Receiving end does not exist"）。port 連著、且串流期間持續有資料流動，同時撐住背景頁與傳輸結果，且翻譯在 content script 情境跑到完，popup 可立刻關。改這裡務必保留 port + streaming 機制。
 - `extract.js` — `collectSegments` 只取葉節點（跳過含其他可翻譯塊者，避免巢狀重複）與已注入的 `.cc-trans`/`.cc-summary`。
 - `background.js` — bridge 通訊、`ensureContentScript` 在 content script 沒載入時現場補注入。
-- `inject.js` — skeleton 佔位與譯文/摘要注入（`ccInject.*`）。
+- `inject.js` — skeleton 佔位與譯文/摘要注入（`ccInject.*`）。`highlightSentences` 把重點句包成 `<mark class="cc-key">` 標在**原文**上（走文字節點 + 空白正規化比對，因原文常被 `<a>`/`<em>` 切碎）；找不到或跨行內元素邊界無法包 mark 時退回整段標 `.cc-key-para`。標記在原文裡面，所以 `clearInjected` 是「拆殼 + normalize」而非 remove。
 
 ## 慣例
 

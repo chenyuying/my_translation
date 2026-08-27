@@ -14,6 +14,7 @@ const {
   showStatusToast,
   showErrorToast,
   removeStatusToast,
+  highlightSentences,
 } = require("../src/inject.js");
 
 describe("inject", () => {
@@ -227,5 +228,41 @@ describe("status toast", () => {
     clearInjected(document.body);
     expect(document.getElementById("cc-status-toast")).not.toBeNull(); // toast 不被 clearInjected 清掉
     expect(document.querySelectorAll(".cc-skeleton").length).toBe(0); // 但 skeleton 清掉
+  });
+
+  it("highlightSentences marks the key sentence inside the original paragraph", () => {
+    // 原文常含換行縮排、且被 <em> 之類切碎；比對前空白要正規化才找得到句子。
+    document.body.innerHTML =
+      '<p id="p">The quick brown fox\n   jumps over the lazy dog. Tail line.</p>';
+    const p = document.getElementById("p");
+    highlightSentences([
+      { el: p, sentence: "The quick brown fox jumps over the lazy dog." },
+    ]);
+    const mark = p.querySelector("mark.cc-key");
+    expect(mark).not.toBeNull();
+    expect(mark.textContent.replace(/\s+/g, " ")).toBe(
+      "The quick brown fox jumps over the lazy dog."
+    );
+    expect(p.classList.contains("cc-key-para")).toBe(false); // 有精準標到，不用退回整段
+    expect(p.textContent).toContain("Tail line."); // 原文其餘部分完好
+  });
+
+  it("highlightSentences falls back to marking the whole paragraph when not found", () => {
+    document.body.innerHTML = '<p id="p">Something entirely different.</p>';
+    const p = document.getElementById("p");
+    // 句子跨行內元素邊界或 claude 沒逐字照抄時會走到這裡：標整段，不靜默失效。
+    highlightSentences([{ el: p, sentence: "A sentence that is nowhere in the page." }]);
+    expect(p.querySelector("mark.cc-key")).toBeNull();
+    expect(p.classList.contains("cc-key-para")).toBe(true);
+  });
+
+  it("clearInjected unwraps highlights instead of deleting the original text", () => {
+    document.body.innerHTML = '<p id="p">The key claim is here. Tail.</p>';
+    const p = document.getElementById("p");
+    highlightSentences([{ el: p, sentence: "The key claim is here." }]);
+    clearInjected(document.body);
+    expect(p.querySelector("mark.cc-key")).toBeNull();
+    expect(p.textContent).toBe("The key claim is here. Tail."); // 原文一字不少
+    expect(p.childNodes.length).toBe(1); // normalize 過，下輪比對不會被切碎
   });
 });

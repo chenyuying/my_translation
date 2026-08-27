@@ -199,11 +199,36 @@ def test_translate_batch_accepts_text_field_as_translation():
     assert result == {"seg129": "那個 URL", "seg130": "我們打造了"}
 
 
-def test_summarize_returns_summary_string():
+def test_summarize_returns_summary_and_key_sentences():
+    # 摘要那一次呼叫順手挑「值得細讀的原文句子」（前端標在英文原文上練速讀）。
+    # prompt 必須帶 [id] 前綴，claude 才能指出句子出自哪一段。
     def fake_runner(cmd, input, capture_output, text, timeout):
-        return FakeCompleted('{"summary": "這是一篇關於測試的文章。"}')
+        assert "[s1]" in input and "[s2]" in input
+        return FakeCompleted(
+            '{"summary": "這是一篇關於測試的文章。", "highlights": ['
+            '{"id": "s1", "sentence": "The key claim is here."}, '
+            '{"id": "s2"}'  # 缺 sentence → 丟掉該筆，不該炸掉整份摘要
+            ']}'
+        )
 
-    assert summarize("long text", make_config(), runner=fake_runner) == "這是一篇關於測試的文章。"
+    segments = [
+        {"id": "s1", "text": "The key claim is here."},
+        {"id": "s2", "text": "Filler text."},
+    ]
+    summary, highlights = summarize(segments, make_config(), runner=fake_runner)
+    assert summary == "這是一篇關於測試的文章。"
+    assert highlights == [{"id": "s1", "sentence": "The key claim is here."}]
+
+
+def test_summarize_tolerates_missing_highlights():
+    # claude 只回摘要、沒回 highlights 時，重點句就是空的，不該 KeyError。
+    def fake_runner(cmd, input, capture_output, text, timeout):
+        return FakeCompleted('{"summary": "摘要"}')
+
+    summary, highlights = summarize(
+        [{"id": "s1", "text": "x"}], make_config(), runner=fake_runner
+    )
+    assert (summary, highlights) == ("摘要", [])
 
 
 def test_translate_page_uses_cache_and_calls_claude_for_misses(tmp_path):

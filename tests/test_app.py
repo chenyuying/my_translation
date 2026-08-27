@@ -69,7 +69,10 @@ def test_translate_streams_batches_then_summary(tmp_path):
 
     def fake_runner(cmd, input, capture_output, text, timeout):
         if "summarize" in input.lower():
-            return FakeCompleted('{"summary": "整頁摘要"}')
+            return FakeCompleted(
+                '{"summary": "整頁摘要", '
+                '"highlights": [{"id": "s1", "sentence": "Hello"}]}'
+            )
         return FakeCompleted('{"translations": [{"id": "s1", "translation": "你好"}]}')
 
     app = create_app(cfg, cache, runner=fake_runner)
@@ -90,4 +93,11 @@ def test_translate_streams_batches_then_summary(tmp_path):
     assert [t for b in batches for t in b["translations"]] == [
         {"id": "s1", "translation": "你好"}
     ]
-    assert summaries == [{"type": "summary", "summary": "整頁摘要"}]
+    # summary 事件同時帶「重點原文句」（前端據此把句子標回英文原文，供速讀）
+    assert summaries == [
+        {
+            "type": "summary",
+            "summary": "整頁摘要",
+            "highlights": [{"id": "s1", "sentence": "Hello"}],
+        }
+    ]

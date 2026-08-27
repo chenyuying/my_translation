@@ -71,6 +71,74 @@
     });
   }
 
+  // ── 原文重點句標記 ────────────────────────────────────────────────
+  // 把 bridge 挑出的重點句標在「英文原文」上，讓眼睛先掃原文、落在真正承載重點的
+  // 句子上（練速讀），看不懂再往下看譯文。標的是原文而非譯文，這才是練英文的地方。
+
+  function highlightSentences(items) {
+    items.forEach(({ el, sentence }) => {
+      // 找不到句子就退回「整段標記」：寧可標粗一點，也不要靜默失效。
+      if (!markSentence(el, sentence)) el.classList.add("cc-key-para");
+    });
+  }
+
+  function markSentence(el, sentence) {
+    // claude 不保證逐字照抄：常把段落前綴 [segN] 一起抄進來、空白也可能不一致。
+    // 故先去前綴、把空白正規化，再比對（見 CLAUDE.md：對 claude 輸出保持寬容）。
+    const needle = String(sentence || "")
+      .replace(/^\[[^\]]+\]\s*/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (needle.length < 12) return false; // 太短容易誤標到別處
+
+    // 原文常被 <a>/<em>/<strong> 切成多個文字節點，且含換行縮排。這裡把段落裡所有
+    // 文字節點串成一條「空白正規化後」的字串，同時逐字記下它來自哪個節點的哪一位，
+    // 才能跨節點比對、再把命中位置換回 Range。
+    const doc = el.ownerDocument;
+    const chars = [];
+    let flat = "";
+    const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const v = n.nodeValue;
+      for (let i = 0; i < v.length; i++) {
+        const isWs = /\s/.test(v[i]);
+        if (isWs && flat.endsWith(" ")) continue; // 連續空白壓成一個
+        flat += isWs ? " " : v[i];
+        chars.push({ node: n, offset: i });
+      }
+    }
+
+    const at = flat.indexOf(needle);
+    if (at < 0) return false;
+    const start = chars[at];
+    const end = chars[at + needle.length - 1];
+    const range = doc.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset + 1);
+    const mark = doc.createElement("mark");
+    mark.className = "cc-key";
+    try {
+      range.surroundContents(mark);
+    } catch (_) {
+      // 句子跨越行內元素邊界（例如中間有連結）→ 不能包成單一 mark。
+      // 不硬拆原文結構，交給呼叫端退回整段標記。
+      return false;
+    }
+    return true;
+  }
+
+  // 標記是「包在原文裡面」的，不能像譯文那樣整個 remove（會把原文一起刪掉）——
+  // 要拆殼還原，再 normalize 把文字節點合回去，否則下一輪比對會被切得更碎。
+  function clearHighlights(root) {
+    root.querySelectorAll("mark.cc-key").forEach((m) => {
+      const parent = m.parentNode;
+      while (m.firstChild) parent.insertBefore(m.firstChild, m);
+      m.remove();
+      parent.normalize();
+    });
+    root.querySelectorAll(".cc-key-para").forEach((n) => n.classList.remove("cc-key-para"));
+  }
+
   // 只清「還在轉圈的骨架」，保留已注入的譯文（cc-trans）與真正摘要卡。
   // streaming 收尾 / 中途失敗時用：已翻好的批次留在畫面上，未翻的骨架清掉。
   function clearSkeletons(root) {
@@ -119,6 +187,7 @@
     // 由 show/removeStatusToast 自己管理，故意不在此清掉——這樣失敗清骨架後，
     // 錯誤提示仍留在畫面上。
     root.querySelectorAll(".cc-trans, .cc-summary, .cc-skeleton").forEach((n) => n.remove());
+    clearHighlights(root); // 原文上的重點句標記要拆殼，不能 remove
   }
 
   // ── 頁面浮動狀態條 ──────────────────────────────────────────────
@@ -175,6 +244,8 @@
     injectSummary,
     clearInjected,
     clearSkeletons,
+    highlightSentences,
+    clearHighlights,
     buildSkeletonNode,
     injectSkeletons,
     injectSkeletonSummary,

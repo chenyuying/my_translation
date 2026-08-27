@@ -19,7 +19,7 @@
   // 每一批（batch）與摘要（summary）走 port.postMessage 即時回來，邊收邊注入，
   // 也避開 sendMessage 長時間後「Receiving end does not exist」的坑。
   //
-  // handlers.onBatch(translations) / handlers.onSummary(summary) 於每個事件即時觸發。
+  // handlers.onBatch(translations) / handlers.onSummary(summary, highlights) 於每個事件即時觸發。
   // 回傳 Promise 於串流結束時 resolve：正常收到 done → {ok:true}；
   // 收到 error 或 port 中途斷線 → {ok:false, error}。一律 resolve、不 reject。
   function requestTranslateViaPort(payload, handlers) {
@@ -53,7 +53,7 @@
           }
         } else if (ev.type === "summary") {
           try {
-            handlers.onSummary(ev.summary || "");
+            handlers.onSummary(ev.summary || "", ev.highlights || []);
           } catch (err) {
             console.error("[cc-translate][content] onSummary 失敗:", err);
           }
@@ -119,10 +119,17 @@
           );
           console.log("[cc-translate][content] 已注入一批", items.length, "段，累計", doneCount);
         },
-        // 收到摘要：把骨架摘要卡換成真正摘要。
-        onSummary: (summary) => {
+        // 收到摘要：把骨架摘要卡換成真正摘要，並把重點句標回英文原文上（練速讀用）。
+        onSummary: (summary, highlights) => {
           lastSummary = summary || "";
           if (lastSummary) ccInject.injectSummary(summaryContainer(), lastSummary);
+          const keys = (highlights || [])
+            .filter((h) => h && idToEl.has(h.id))
+            .map((h) => ({ el: idToEl.get(h.id), sentence: h.sentence }));
+          if (keys.length) {
+            ccInject.highlightSentences(keys);
+            console.log("[cc-translate][content] 已標記重點原文句", keys.length, "句");
+          }
         },
       }
     );

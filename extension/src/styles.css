@@ -117,3 +117,23 @@
 .cc-toast-close:hover {
   opacity: 1 !important;
 }
+
+/* 值得細讀的原文重點句：底線色塊標在英文原文上，供速讀時當視覺落點。
+   刻意用「透明背景 + 底部色帶」而非整塊填色：不覆蓋原站字色，深色頁也不會把字吃掉
+   （<mark> 的 UA 預設是黃底黑字，在深色頁會變成刺眼色塊，故一併覆寫）。 */
+mark.cc-key {
+  background: linear-gradient(
+    transparent 58%,
+    rgba(255, 196, 0, 0.42) 58%
+  ) !important;
+  color: inherit !important;
+  padding: 0 1px !important;
+  border-radius: 2px !important;
+}
+
+/* 退路：句子找不到（claude 沒逐字照抄）或跨行內元素邊界無法包 mark 時，改標整段。
+   用琥珀色左邊框，和譯文的灰色左邊框（.cc-trans）區分開。 */
+.cc-key-para {
+  border-left: 3px solid rgba(255, 196, 0, 0.75) !important;
+  padding-left: 8px !important;
+}
