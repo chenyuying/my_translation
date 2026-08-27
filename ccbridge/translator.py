@@ -86,7 +86,10 @@ def run_claude(prompt: str, config, runner=subprocess.run, return_raw: bool = Fa
 
     return_raw=True 時回 (dict, 原始 stdout)，供除錯時檢視 claude 實際輸出。
     """
-    cmd = list(config.claude_cmd) + ["-p", "--allowedTools", ""]
+    # --strict-mcp-config 且不給 --mcp-config → 完全不載入任何 MCP server。
+    # 容器掛了 host 的 ~/.claude.json，否則會連 xcode 等 MCP 一起啟動：翻譯用不到，
+    # 只是每次呼叫多等它們握手。只影響本 bridge 的 claude 呼叫，不動使用者全域設定。
+    cmd = list(config.claude_cmd) + ["-p", "--allowedTools", "", "--strict-mcp-config"]
     if config.model:
         cmd += ["--model", config.model]
     # 鎖只包住「子程序執行」這段——即 claude 讀-改-寫 ~/.claude.json 的期間；
